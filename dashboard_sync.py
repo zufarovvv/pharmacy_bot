@@ -315,6 +315,12 @@ IIIQ_PROJECT_BLOCK_SIZE = 10
 # Первая строка — заголовки, парсер её пропускает.
 TG_IDS_SHEET_NAME = 'Доступы'
 
+# Лист с контактами менеджеров. Бот ищет менеджера по имени из III-Q и подтягивает
+# его телефон / Telegram-юзернейм / Telegram ID. Колонки распознаются по заголовку:
+#   ФИО (или "Менеджер" / "Имя") | Телефон | Telegram (username) | Telegram ID | Регион
+# Регион опционален.
+MANAGERS_SHEET_NAME = 'Менеджеры'
+
 # Бонус % за проект (захардкожено по данным «Свод таб new», верхнего предела).
 # Для проектов не из списка — фолбэк 7%.
 # TODO: вынести в отдельный конфиг-лист в Google Sheets.
@@ -409,6 +415,89 @@ def _merge_tg_ids(pharmacies_by_inn, tg_map, source_label='DASH'):
             data['tg_id'] = tg_map[inn]
             bound += 1
     print(f"  ✓ [{source_label}] Привязок к Telegram: {bound}/{len(pharmacies_by_inn)}")
+
+
+def _parse_managers_sheet(rows):
+    """
+    Парсит лист 'Менеджеры'. Возвращает {manager_name_lower: {phone, username, tg_id, region}}.
+    Колонки распознаются по заголовку (регистр и пробелы/подчёркивания не важны):
+      имя:     ФИО / Имя / Менеджер / Менежер / Name / Manager
+      телефон: Телефон / Phone / Tel
+      tg:      Telegram / Username / TG / @
+      tg_id:   Telegram_ID / TG_ID / Telegram ID
+      регион:  Регион / Region (опц.)
+    """
+    if not rows or len(rows) < 2:
+        return {}
+
+    header = rows[0]
+    col = {}
+    for j, c in enumerate(header):
+        n = _norm(c).replace(' ', '').replace('_', '').replace('-', '')
+        # сначала более узкие совпадения (tg_id), потом более широкие (telegram)
+        if n in ('tgid', 'telegramid'):
+            col['tg_id'] = j
+        elif n in ('телефон', 'phone', 'tel', 'тел'):
+            col['phone'] = j
+        elif n in ('telegram', 'tg', 'username', 'usernam', 'юзернейм'):
+            col['username'] = j
+        elif n in ('фио', 'имя', 'менеджер', 'менежер', 'manager', 'name', 'фиоменеджера'):
+            if 'name' not in col:
+                col['name'] = j
+        elif n in ('регион', 'region', 'область'):
+            col['region'] = j
+
+    if 'name' not in col:
+        print("⚠️ [Менеджеры] не нашёл колонку с именем (ФИО / Менеджер / Имя)")
+        return {}
+
+    def _cell(row, key):
+        j = col.get(key)
+        if j is None or j >= len(row):
+            return ''
+        return str(row[j] or '').strip()
+
+    result = {}
+    for row in rows[1:]:
+        if not row:
+            continue
+        if len(row) <= col['name']:
+            continue
+        name = _cell(row, 'name')
+        if not name:
+            continue
+
+        info = {
+            'phone': _cell(row, 'phone'),
+            'username': _cell(row, 'username').lstrip('@'),
+            'region': _cell(row, 'region'),
+            'tg_id': None,
+        }
+        tg_raw = row[col['tg_id']] if 'tg_id' in col and len(row) > col['tg_id'] else None
+        if tg_raw not in (None, ''):
+            try:
+                info['tg_id'] = int(_to_float(tg_raw))
+            except (ValueError, TypeError):
+                pass
+
+        result[name.lower()] = info
+    return result
+
+
+def _merge_managers(pharmacies_by_inn, mgr_map, source_label='DASH'):
+    """Подставляет phone / username / tg_id менеджера в данные аптеки (по имени из III-Q)."""
+    if not mgr_map:
+        return
+    matched = 0
+    for inn, data in pharmacies_by_inn.items():
+        mgr_name = (data.get('manager') or '').strip().lower()
+        if mgr_name and mgr_name in mgr_map:
+            info = mgr_map[mgr_name]
+            if info.get('phone'):    data['manager_phone'] = info['phone']
+            if info.get('username'): data['manager_username'] = info['username']
+            if info.get('tg_id'):    data['manager_tg_id'] = info['tg_id']
+            matched += 1
+    print(f"  ✓ [{source_label}] Контактов менеджеров подтянуто: {matched}/{len(pharmacies_by_inn)}")
 
 
 def _find_iiiq_header_row(rows):
@@ -679,6 +768,16 @@ def _read_all_sheets():
                         _merge_tg_ids(results, tg_map, source_label='DASH')
                     except Exception as e:
                         print(f"⚠️ [DASH] лист {TG_IDS_SHEET_NAME!r}: {type(e).__name__}: {e}")
+
+                # Контакты менеджеров
+                mgr_ws = next((ws for ws in wb.worksheets() if ws.title == MANAGERS_SHEET_NAME), None)
+                if mgr_ws:
+                    try:
+                        mgr_rows = mgr_ws.get('A1:F500', value_render_option='UNFORMATTED_VALUE')
+                        mgr_map = _parse_managers_sheet(mgr_rows)
+                        _merge_managers(results, mgr_map, source_label='DASH')
+                    except Exception as e:
+                        print(f"⚠️ [DASH] лист {MANAGERS_SHEET_NAME!r}: {type(e).__name__}: {e}")
                 return results
             print(f"⚠️ [DASH] лист {IIIQ_SHEET_NAME!r}: парсер не нашёл данных, пробуем старый формат")
         except Exception as e:
@@ -838,6 +937,18 @@ def _read_all_sheets_from_excel(file_path):
                         _merge_tg_ids(results, tg_map, source_label='XLSX')
                     except Exception as e:
                         print(f"⚠️ [XLSX] лист {TG_IDS_SHEET_NAME!r}: {type(e).__name__}: {e}")
+
+                # Контакты менеджеров
+                mgr_ws = next((ws for ws in wb.worksheets if ws.title == MANAGERS_SHEET_NAME), None)
+                if mgr_ws:
+                    try:
+                        mgr_rows = []
+                        for row in mgr_ws.iter_rows(min_row=1, max_row=500, min_col=1, max_col=6, values_only=True):
+                            mgr_rows.append(list(row))
+                        mgr_map = _parse_managers_sheet(mgr_rows)
+                        _merge_managers(results, mgr_map, source_label='XLSX')
+                    except Exception as e:
+                        print(f"⚠️ [XLSX] лист {MANAGERS_SHEET_NAME!r}: {type(e).__name__}: {e}")
                 wb.close()
                 return results
             print(f"⚠️ [XLSX] лист {IIIQ_SHEET_NAME!r}: парсер не нашёл данных, пробуем старый формат")
