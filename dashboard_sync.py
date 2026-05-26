@@ -349,17 +349,41 @@ def _parse_tg_id_mapping(rows):
     """
     Парсит лист 'Доступы'. Возвращает {inn: tg_id}.
 
-    Структура:
-      A1: ИНН | B1: telegram_id  (заголовки, пропускаются)
-      A2+: ИНН | telegram_id     (значения)
+    Колонки ищем по заголовку (первая строка):
+      ИНН   — заголовок 'ИНН' или 'INN'
+      tg_id — заголовок 'TG_ID', 'telegram_id', 'TG ID' (регистр и пробелы/_ неважны)
+
+    Остальные колонки (ID, Business, Pharmacy, Status, и т.п.) игнорируются.
+    Порядок колонок не важен.
+
+    tg_id может быть отрицательным (групповой чат / канал Telegram) — это ок.
     """
-    result = {}
     if not rows or len(rows) < 2:
-        return result
+        return {}
+
+    header = rows[0]
+    inn_col = None
+    tg_col = None
+    for j, c in enumerate(header):
+        n = _norm(c).replace(' ', '').replace('_', '')
+        if n in ('инн', 'inn') and inn_col is None:
+            inn_col = j
+        elif n in ('tgid', 'telegramid') and tg_col is None:
+            tg_col = j
+
+    if inn_col is None or tg_col is None:
+        print(f"⚠️ [Доступы] не нашёл заголовки 'ИНН' и 'TG_ID' в первой строке")
+        return {}
+
+    result = {}
+    max_col = max(inn_col, tg_col)
     for row in rows[1:]:
-        if not row or len(row) < 2:
+        if not row:
             continue
-        inn_raw, tg_raw = row[0], row[1]
+        if len(row) <= max_col:
+            continue
+        inn_raw = row[inn_col]
+        tg_raw = row[tg_col]
         if inn_raw in (None, '') or tg_raw in (None, ''):
             continue
         try:
@@ -367,7 +391,9 @@ def _parse_tg_id_mapping(rows):
             tg = int(_to_float(tg_raw))
         except (ValueError, TypeError):
             continue
-        if len(inn) < 7 or tg < 100000:
+        # ИНН — минимум 7 цифр. tg_id может быть отрицательным (групповой чат),
+        # но абсолютное значение всегда не меньше 6 цифр.
+        if len(inn) < 7 or abs(tg) < 100000:
             continue
         result[inn] = tg
     return result
@@ -646,7 +672,9 @@ def _read_all_sheets():
                 tg_ws = next((ws for ws in wb.worksheets() if ws.title == TG_IDS_SHEET_NAME), None)
                 if tg_ws:
                     try:
-                        tg_rows = tg_ws.get('A1:B2000', value_render_option='UNFORMATTED_VALUE')
+                        # Читаем шире (A1:H2000) — в листе могут быть служебные колонки
+                        # (ID, Business, Pharmacy, Status, SEND и т.п.), парсер сам найдёт ИНН и TG_ID по заголовку.
+                        tg_rows = tg_ws.get('A1:H2000', value_render_option='UNFORMATTED_VALUE')
                         tg_map = _parse_tg_id_mapping(tg_rows)
                         _merge_tg_ids(results, tg_map, source_label='DASH')
                     except Exception as e:
@@ -803,7 +831,8 @@ def _read_all_sheets_from_excel(file_path):
                 if tg_ws:
                     try:
                         tg_rows = []
-                        for row in tg_ws.iter_rows(min_row=1, max_row=2000, min_col=1, max_col=2, values_only=True):
+                        # Читаем шире — в листе могут быть служебные колонки
+                        for row in tg_ws.iter_rows(min_row=1, max_row=2000, min_col=1, max_col=8, values_only=True):
                             tg_rows.append(list(row))
                         tg_map = _parse_tg_id_mapping(tg_rows)
                         _merge_tg_ids(results, tg_map, source_label='XLSX')
