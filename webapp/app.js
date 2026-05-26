@@ -720,80 +720,94 @@ function schedulePromo(d) {
   if (promoScheduled) return;
   promoScheduled = true;
 
-  // Подбираем "тему промо" для этой аптеки.
-  // Приоритет: 1) проект с худшим ВП и ненулевым бонусом 2) общая упущенная выгода 3) ничего.
-  const promo = buildPromoContent(d);
-  if (!promo) return;
-
   // Показываем 1 раз за сессию Mini App.
   try {
     if (sessionStorage.getItem('datfo_promo_shown')) return;
   } catch (e) {}
 
-  setTimeout(() => showPromo(promo), 3500);
+  // Подбираем "тему промо" — персонально для этой аптеки.
+  const promo = buildPromoContent(d);
+  if (!promo) return;
+
+  // Задержка ~12 сек — даём аптеке посмотреть свои цифры, потом всплывает оффер.
+  setTimeout(() => showPromo(promo), 12000);
 }
 
 function buildPromoContent(d) {
   const projects = Array.isArray(d.projects) ? d.projects : [];
   const bonuses = d.bonuses || {};
+  const totals = d.totals || {};
   const potential = parseMoney((bonuses.potential && bonuses.potential.amount) || '');
   const accrued = parseMoney((bonuses.accrued && bonuses.accrued.amount) || '');
   const lost = Math.max(0, potential - accrued);
+  const quarterPct = totals.quarter_percent != null ? Number(totals.quarter_percent) : null;
+  const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
+  const eyebrow = currentLang === 'uz' ? 'HAFTA TAKLIFI' : 'ПРЕДЛОЖЕНИЕ НЕДЕЛИ';
+  const ctaText = currentLang === 'uz' ? "Menejer bilan bog'lanish" : 'Связаться с менеджером';
 
-  // Сценарий А: есть конкретный "плохой" проект с ненулевым бонусом — пушим его.
-  const candidates = projects
+  // Сценарий А: есть конкретный "плохой" проект с ненулевым бонусом — самый сильный триггер.
+  const weak = projects
     .filter(p => p.percent < 100 && parseMoney(p.bonus_amount || '0') > 0)
     .sort((a, b) => a.percent - b.percent);
 
-  if (candidates.length > 0) {
-    const worst = candidates[0];
+  if (weak.length > 0) {
+    const worst = weak[0];
     const bonusVal = parseMoney(worst.bonus_amount || '0');
     const factVal = parseMoney(worst.fact || '0');
     const planVal = parseMoney(worst.quarter_plan || '0');
     const gap = Math.max(0, planVal - factVal);
-    const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
-
-    if (currentLang === 'uz') {
-      return {
-        icon: '🔥',
-        eyebrow: 'BOY BERILAYOTGAN BONUS',
-        amount: formatMoney(bonusVal) + ' ' + moneyLabel,
-        text: `<b>${escapeHtml(worst.name)}</b> loyihasi atigi <b>${worst.percent}%</b>ga bajarilgan. Yana <b>${formatMoney(gap)} ${moneyLabel}</b>lik buyurtma bersangiz — to'liq bonusni olasiz.`,
-        ctaText: "Menejer bilan bog'lanish",
-      };
-    }
     return {
       icon: '🔥',
-      eyebrow: 'УПУЩЕННЫЙ БОНУС',
+      eyebrow,
       amount: formatMoney(bonusVal) + ' ' + moneyLabel,
-      text: `Проект <b>${escapeHtml(worst.name)}</b> выполнен только на <b>${worst.percent}%</b>. Закажите ещё на <b>${formatMoney(gap)} ${moneyLabel}</b> — и получите полный бонус за этот проект.`,
-      ctaText: 'Связаться с менеджером',
+      text: currentLang === 'uz'
+        ? `<b>${escapeHtml(worst.name)}</b> loyihasi <b>${worst.percent}%</b>ga bajarilgan. Yana <b>${formatMoney(gap)} ${moneyLabel}</b>lik buyurtma — to'liq bonus sizniki.`
+        : `Проект <b>${escapeHtml(worst.name)}</b> выполнен на <b>${worst.percent}%</b>. Закажите ещё на <b>${formatMoney(gap)} ${moneyLabel}</b> — полный бонус ваш.`,
+      ctaText,
     };
   }
 
   // Сценарий Б: суммарная упущенная выгода без конкретного "плохого" проекта.
   if (lost > 0) {
-    const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
-    if (currentLang === 'uz') {
-      return {
-        icon: '💰',
-        eyebrow: 'BOY BERILGAN FOYDA',
-        amount: formatMoney(lost) + ' ' + moneyLabel,
-        text: `Chorak oxirigacha bu summani <b>olishingiz mumkin</b>. Menejer sizga ustuvor loyihalarni tanlab beradi.`,
-        ctaText: "Menejer bilan bog'lanish",
-      };
-    }
     return {
       icon: '💰',
-      eyebrow: 'УПУЩЕННАЯ ВЫГОДА',
+      eyebrow,
       amount: formatMoney(lost) + ' ' + moneyLabel,
-      text: `До конца квартала эту сумму <b>ещё можно забрать</b>. Менеджер подскажет, какие проекты приоритетны для вас.`,
-      ctaText: 'Связаться с менеджером',
+      text: currentLang === 'uz'
+        ? `Chorak oxirigacha bu summani <b>olishingiz mumkin</b>. Menejer ustuvor loyihalarni tanlab beradi.`
+        : `До конца квартала эту сумму <b>ещё можно забрать</b>. Менеджер подскажет приоритетные проекты.`,
+      ctaText,
     };
   }
 
-  // Сценарий В: всё ок — промо не нужно.
-  return null;
+  // Сценарий В: квартал закрыт (≥ 100%). Двигаем дальше — на перевыполнение.
+  if (quarterPct != null && quarterPct >= 100) {
+    // Топ-проект, который можно ещё раскачать (любой completed — есть куда расти)
+    const topProject = projects
+      .filter(p => parseMoney(p.bonus_amount || '0') > 0)
+      .sort((a, b) => parseMoney(b.bonus_amount || '0') - parseMoney(a.bonus_amount || '0'))[0];
+    const projectName = topProject ? escapeHtml(topProject.name) : (currentLang === 'uz' ? 'TOP loyiha' : 'топ-проектом');
+    return {
+      icon: '🚀',
+      eyebrow,
+      amount: quarterPct + '%',
+      text: currentLang === 'uz'
+        ? `Reja <b>${quarterPct}%</b>ga bajarilgan. <b>${projectName}</b> bo'yicha ortiqcha bajaring — qo'shimcha bonus oling.`
+        : `План закрыт на <b>${quarterPct}%</b>. Перевыполните по <b>${projectName}</b> — получите дополнительный бонус.`,
+      ctaText,
+    };
+  }
+
+  // Сценарий Г: дефолтный — у аптеки нет проектов с бонусом, но мы всё равно показываем оффер.
+  return {
+    icon: '⭐',
+    eyebrow,
+    amount: currentLang === 'uz' ? 'Yangi loyihalar' : 'Новые проекты',
+    text: currentLang === 'uz'
+      ? `Sizning kategoriyangizdagi dorixonalar uchun yangi imkoniyatlar bor. Menejer sizga mos taklifni aytadi.`
+      : `Для аптек вашей категории есть новые проекты. Менеджер расскажет, что вам подойдёт.`,
+    ctaText,
+  };
 }
 
 function showPromo(promo) {
