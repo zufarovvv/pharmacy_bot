@@ -310,6 +310,11 @@ def _parse_pharmacy_sheet(rows):
 IIIQ_SHEET_NAME = 'III-Q'
 IIIQ_PROJECT_BLOCK_SIZE = 10
 
+# Лист со связкой ИНН → telegram_id. Менеджер заполняет руками по мере выдачи
+# доступа аптекам. 2 колонки: A=ИНН (число), B=telegram_id (число).
+# Первая строка — заголовки, парсер её пропускает.
+TG_IDS_SHEET_NAME = 'Доступы'
+
 # Бонус % за проект (захардкожено по данным «Свод таб new», верхнего предела).
 # Для проектов не из списка — фолбэк 7%.
 # TODO: вынести в отдельный конфиг-лист в Google Sheets.
@@ -338,6 +343,46 @@ DEFAULT_BONUS_PCT = 7
 
 def _norm(s):
     return str(s or '').strip().lower()
+
+
+def _parse_tg_id_mapping(rows):
+    """
+    Парсит лист 'Доступы'. Возвращает {inn: tg_id}.
+
+    Структура:
+      A1: ИНН | B1: telegram_id  (заголовки, пропускаются)
+      A2+: ИНН | telegram_id     (значения)
+    """
+    result = {}
+    if not rows or len(rows) < 2:
+        return result
+    for row in rows[1:]:
+        if not row or len(row) < 2:
+            continue
+        inn_raw, tg_raw = row[0], row[1]
+        if inn_raw in (None, '') or tg_raw in (None, ''):
+            continue
+        try:
+            inn = str(int(_to_float(inn_raw)))
+            tg = int(_to_float(tg_raw))
+        except (ValueError, TypeError):
+            continue
+        if len(inn) < 7 or tg < 100000:
+            continue
+        result[inn] = tg
+    return result
+
+
+def _merge_tg_ids(pharmacies_by_inn, tg_map, source_label='DASH'):
+    """Подставляет tg_id в распарсенные данные аптек по маппингу ИНН → tg_id."""
+    if not tg_map:
+        return
+    bound = 0
+    for inn, data in pharmacies_by_inn.items():
+        if inn in tg_map:
+            data['tg_id'] = tg_map[inn]
+            bound += 1
+    print(f"  ✓ [{source_label}] Привязок к Telegram: {bound}/{len(pharmacies_by_inn)}")
 
 
 def _find_iiiq_header_row(rows):
@@ -597,6 +642,15 @@ def _read_all_sheets():
             results = parse_iiiq_sheet(raw)
             if results:
                 print(f"  ✓ {IIIQ_SHEET_NAME!r}: {len(results)} аптек")
+                # Подтягиваем привязки tg_id, если есть лист 'Доступы'
+                tg_ws = next((ws for ws in wb.worksheets() if ws.title == TG_IDS_SHEET_NAME), None)
+                if tg_ws:
+                    try:
+                        tg_rows = tg_ws.get('A1:B2000', value_render_option='UNFORMATTED_VALUE')
+                        tg_map = _parse_tg_id_mapping(tg_rows)
+                        _merge_tg_ids(results, tg_map, source_label='DASH')
+                    except Exception as e:
+                        print(f"⚠️ [DASH] лист {TG_IDS_SHEET_NAME!r}: {type(e).__name__}: {e}")
                 return results
             print(f"⚠️ [DASH] лист {IIIQ_SHEET_NAME!r}: парсер не нашёл данных, пробуем старый формат")
         except Exception as e:
@@ -744,6 +798,17 @@ def _read_all_sheets_from_excel(file_path):
             results = parse_iiiq_sheet(raw)
             if results:
                 print(f"  ✓ {IIIQ_SHEET_NAME!r}: {len(results)} аптек")
+                # Подтягиваем привязки tg_id, если есть лист 'Доступы'
+                tg_ws = next((ws for ws in wb.worksheets if ws.title == TG_IDS_SHEET_NAME), None)
+                if tg_ws:
+                    try:
+                        tg_rows = []
+                        for row in tg_ws.iter_rows(min_row=1, max_row=2000, min_col=1, max_col=2, values_only=True):
+                            tg_rows.append(list(row))
+                        tg_map = _parse_tg_id_mapping(tg_rows)
+                        _merge_tg_ids(results, tg_map, source_label='XLSX')
+                    except Exception as e:
+                        print(f"⚠️ [XLSX] лист {TG_IDS_SHEET_NAME!r}: {type(e).__name__}: {e}")
                 wb.close()
                 return results
             print(f"⚠️ [XLSX] лист {IIIQ_SHEET_NAME!r}: парсер не нашёл данных, пробуем старый формат")
