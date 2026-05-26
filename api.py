@@ -22,7 +22,7 @@ from database import get_user_data, get_pharmacies_by_tg_id
 log = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv('BOT_TOKEN', '')
-ALLOW_QUERY_TG_ID = os.getenv('ALLOW_QUERY_TG_ID', '1') == '1'
+ALLOW_QUERY_TG_ID = os.getenv('ALLOW_QUERY_TG_ID', '0') == '1'
 WEBAPP_DIR = Path(__file__).parent / 'webapp'
 
 
@@ -159,4 +159,8 @@ async def start_api(port: int = 8080, host: str = '0.0.0.0'):
     await runner.setup()
     site = web.TCPSite(runner, host, port)
     await site.start()
-    print(f"🌐 API запущен на http://{host}:{port}  (dev mode: ALLOW_QUERY_TG_ID={ALLOW_QUERY_TG_ID})")
+    if ALLOW_QUERY_TG_ID:
+        print(f"🌐 API запущен на http://{host}:{port}")
+        print("⚠️  ALLOW_QUERY_TG_ID=1 — любой может читать /api/me?tg_id=<id>. Только для dev!")
+    else:
+        print(f"🌐 API запущен на http://{host}:{port}  (auth: Telegram initData only)")
