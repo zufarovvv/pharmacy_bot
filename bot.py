@@ -1112,12 +1112,10 @@ async def upload_dashboard_excel_recv(message: types.Message, state: FSMContext)
             os.remove(file_path)
 
     # Формируем отчёт + опционально шлём уведомление владельцу аптеки
-    notified_tg_ids = []
-    notify_failed = []
     if result.get('error'):
         text = f"❌ Ошибка: {result['error']}"
     elif result.get('updated') == 1:
-        # Самый частый случай: менеджер обновил одну аптеку через лист "Свод таб new"
+        # Менеджер обновил одну аптеку через лист "Свод таб new"
         per_pharm = result.get('per_pharm') or {}
         inn = next(iter(per_pharm), None)
         info = per_pharm.get(inn, {}) if inn else {}
@@ -1134,10 +1132,8 @@ async def upload_dashboard_excel_recv(message: types.Message, state: FSMContext)
                     TEXTS[owner_lang]['pharm_notify_msg'],
                     reply_markup=kb_webapp(tg_id, owner_lang),
                 )
-                notified_tg_ids.append(tg_id)
                 notify_line = f"\n📨 Уведомление отправлено владельцу (tg_id: <code>{tg_id}</code>)."
             except Exception as e:
-                notify_failed.append({'tg_id': tg_id, 'error': str(e)})
                 notify_line = f"\n⚠️ Не смог уведомить владельца ({tg_id}): {e}"
         elif tg_id and not WEB_APP_URL:
             notify_line = "\n⚠️ WEB_APP_URL не задан в .env — уведомление не отправлено."
@@ -1151,14 +1147,12 @@ async def upload_dashboard_excel_recv(message: types.Message, state: FSMContext)
             f"{notify_line}"
         )
     else:
-        text = (
-            f"✅ Обновлено: <b>{result['updated']}</b> из {result['total_sheets']} листов\n"
-        )
-        skipped = result.get('skipped_no_tg') or []
-        if skipped:
-            preview = ", ".join(s['inn'] for s in skipped[:5])
-            more = f" и ещё {len(skipped) - 5}" if len(skipped) > 5 else ""
-            text += f"\n⚠️ Без TG_ID ({len(skipped)}): {preview}{more}"
+        # Массовый импорт (например, из листа III-Q)
+        with_tg = result.get('updated_with_tg', 0)
+        no_tg = result.get('updated_no_tg', 0)
+        text = f"✅ Обновлено аптек: <b>{result['updated']}</b>"
+        if with_tg or no_tg:
+            text += f"\n— с привязкой к Telegram: {with_tg}\n— без TG_ID: {no_tg}"
         errors = result.get('errors') or []
         if errors:
             preview = "; ".join(f"{e['inn']}: {e['error']}" for e in errors[:3])

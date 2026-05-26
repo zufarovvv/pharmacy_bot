@@ -171,6 +171,32 @@ async def update_pharmacy_dashboard(inn, data):
         await conn.close()
 
 
+async def upsert_pharmacy_dashboard_only(inn, business_name, pharmacy_name, dashboard_data):
+    """
+    Создаёт или обновляет аптеку БЕЗ привязки tg_id (используется при импорте III-Q —
+    там ИНН есть, а владельца Telegram пока не знаем).
+
+    Если запись с таким ИНН уже была — owner_tg_id не трогаем.
+    Если нет — вставляем с owner_tg_id=NULL (его потом проставит admin / отдельный маппер).
+    """
+    import json
+    conn = await get_connection()
+    try:
+        await conn.execute('''
+            INSERT INTO pharmacies (inn, business_name, pharmacy_name, dashboard_data)
+            VALUES ($1, $2, $3, $4::jsonb)
+            ON CONFLICT (inn) DO UPDATE
+            SET business_name = EXCLUDED.business_name,
+                pharmacy_name = EXCLUDED.pharmacy_name,
+                dashboard_data = EXCLUDED.dashboard_data;
+        ''',
+            inn, business_name, pharmacy_name,
+            json.dumps(dashboard_data, ensure_ascii=False),
+        )
+    finally:
+        await conn.close()
+
+
 async def upsert_pharmacy_full(inn, owner_tg_id, business_name, pharmacy_name, dashboard_data):
     """Создаёт или обновляет аптеку целиком (вместе с owner и dashboard_data)."""
     conn = await get_connection()

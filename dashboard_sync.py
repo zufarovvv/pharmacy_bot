@@ -31,7 +31,7 @@ import gspread
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 
-from database import upsert_pharmacy_full
+from database import upsert_pharmacy_full, upsert_pharmacy_dashboard_only
 
 load_dotenv()
 
@@ -297,13 +297,315 @@ def _parse_pharmacy_sheet(rows):
     }
 
 
+# ============================================================
+# III-Q parser
+# Широкая таблица: одна строка = одна аптека (юр.лицо, один ИНН).
+# Колонки B..I — метаданные (ИНН, юр.название, сеть, кол-во точек, менеджер, категория).
+# Колонки J.. — блоки по 10 колонок на проект:
+#   проект | условия | план I-Q | план январь | факт январь
+#         | план февраль | факт февраль | план март | факт март | ВП
+# Блоки идут вправо до конца листа. Кол-во проектов — произвольное.
+# ============================================================
+
+IIIQ_SHEET_NAME = 'III-Q'
+IIIQ_PROJECT_BLOCK_SIZE = 10
+
+# Бонус % за проект (захардкожено по данным «Свод таб new», верхнего предела).
+# Для проектов не из списка — фолбэк 7%.
+# TODO: вынести в отдельный конфиг-лист в Google Sheets.
+BONUS_PCT_BY_PROJECT = {
+    'KRKA': 7, 'КРКА': 7,
+    'KUSUM': 3, 'КУСУМ': 3,
+    'WELFARM': 7, 'ВЕЛФАРМ': 7,
+    'GETZ PHARMA': 7,
+    'FERON': 7,
+    'FARM STANDART': 7,
+    'ZOMMER': 5,
+    'ASFARMA': 7,
+    'SYNERGY': 7,
+    'COMPLETEPHARMA': 7,
+    'BAYER': 7,
+    'MEDEXPORT': 6,
+    'ASTRA ZENECA': 6,
+    'CCL': 7,
+    'SAFE': 7,
+    'SIRIUS': 7,
+    'SENTISS': 7,
+    'BIOMIND': 7,
+}
+DEFAULT_BONUS_PCT = 7
+
+
+def _norm(s):
+    return str(s or '').strip().lower()
+
+
+def _find_iiiq_header_row(rows):
+    """Ищет строку-заголовок: содержит "ИНН" и "проект". Возвращает индекс (1-based) или None."""
+    for i, row in enumerate(rows[:25]):
+        if not row:
+            continue
+        has_inn = any(_norm(c) == 'инн' for c in row)
+        has_project = any(_norm(c) == 'проект' for c in row)
+        if has_inn and has_project:
+            return i + 1  # 1-based
+    return None
+
+
+def _bonus_pct_for(project_name):
+    key = (project_name or '').strip().upper()
+    return BONUS_PCT_BY_PROJECT.get(key, DEFAULT_BONUS_PCT)
+
+
+def _parse_iiiq_project_block(block, project_name=None):
+    """
+    Парсит один блок проекта (10 ячеек).
+    Возвращает dict проекта в том же формате что _parse_pharmacy_sheet, или None если данных нет.
+    """
+    name = project_name or str(block[0] or '').strip()
+    condition = str(block[1] or '').strip()
+    q_plan = _to_float(block[2])
+    jan_plan = _to_float(block[3]); jan_fact = _to_float(block[4])
+    feb_plan = _to_float(block[5]); feb_fact = _to_float(block[6])
+    mar_plan = _to_float(block[7]); mar_fact = _to_float(block[8])
+    vp_raw = block[9]
+
+    if not name:
+        return None
+    # Пропускаем проекты, где у этой аптеки нет ни плана, ни факта
+    total_fact_check = jan_fact + feb_fact + mar_fact
+    if q_plan == 0 and total_fact_check == 0:
+        return None
+
+    # Месячные проценты считаем сами
+    def _pct(plan, fact):
+        if plan <= 0:
+            return 0
+        return int(round(fact / plan * 100))
+
+    months = {
+        'january':  {'plan': _fmt_money(jan_plan), 'fact': _fmt_money(jan_fact),
+                     'plan_raw': jan_plan, 'fact_raw': jan_fact, 'percent': _pct(jan_plan, jan_fact)},
+        'february': {'plan': _fmt_money(feb_plan), 'fact': _fmt_money(feb_fact),
+                     'plan_raw': feb_plan, 'fact_raw': feb_fact, 'percent': _pct(feb_plan, feb_fact)},
+        'march':    {'plan': _fmt_money(mar_plan), 'fact': _fmt_money(mar_fact),
+                     'plan_raw': mar_plan, 'fact_raw': mar_fact, 'percent': _pct(mar_plan, mar_fact)},
+    }
+
+    total_fact = jan_fact + feb_fact + mar_fact
+
+    # Квартальный процент: если в ячейке S есть значение — используем его (формат: дробь 0.83 или целое 83);
+    # если пусто — считаем сами.
+    if vp_raw is None or vp_raw == '':
+        q_percent = _pct(q_plan, total_fact)
+    else:
+        # Excel хранит проценты как доли (0.83). Но если кто-то вписал руками "83" — тоже понимаем.
+        v = _to_float(vp_raw)
+        q_percent = int(round(v * 100)) if abs(v) <= 5 else int(round(v))
+
+    remaining = max(0.0, q_plan - total_fact)
+    bonus_pct = _bonus_pct_for(name)
+    # Бонус начисляется при выполнении плана. Простая модель: bonus = q_plan × bonus_pct% (если выполнили).
+    # Подробнее логика DATFO может отличаться — пока такой MVP.
+    bonus_amount = q_plan * bonus_pct / 100 if q_percent >= 100 else 0.0
+
+    return {
+        'number': None,
+        'name': name,
+        'quarter_plan': _fmt_money(q_plan),
+        'quarter_plan_raw': q_plan,
+        'months': months,
+        'condition': condition,
+        'percent': q_percent,
+        'status': _status_for(q_percent),
+        'remaining': '+ ' + _fmt_money(remaining) if q_percent >= 100 else _fmt_money(remaining),
+        'bonus_percent': bonus_pct,
+        'bonus_amount': _fmt_money(bonus_amount),
+        'bonus_amount_raw': bonus_amount,
+        'fact': _fmt_money(total_fact),
+        'plan': _fmt_money(q_plan),
+    }
+
+
+def parse_iiiq_sheet(rows):
+    """
+    Парсит III-Q. Возвращает {inn: pharmacy_data} в формате, совместимом с
+    _parse_pharmacy_sheet (тот же шейп dashboard_data, что читает Mini App).
+
+    Особенности:
+      - tg_id: не в III-Q. В выходе будет None — затем _apply_dashboard_updates
+        попытается сохранить запись без привязки владельца (см. upsert_pharmacy_dashboard_only).
+    """
+    header_row = _find_iiiq_header_row(rows)
+    if not header_row:
+        return {}
+
+    header = rows[header_row - 1]
+
+    # Найти колонки метаданных по заголовкам
+    col_idx = {}
+    for j, c in enumerate(header):
+        n = _norm(c)
+        if n == 'инн' and 'inn' not in col_idx: col_idx['inn'] = j
+        elif 'юридическое' in n: col_idx['legal_name'] = j
+        elif n == 'аптеки': col_idx['pharm_name'] = j
+        elif 'кол-во' in n: col_idx['count'] = j
+        elif n in ('менежер', 'менеджер'): col_idx['manager'] = j
+        elif 'категория' in n and 'datfo' in n: col_idx['category'] = j
+
+    if 'inn' not in col_idx:
+        return {}
+
+    # Найти начала блоков проектов: все колонки с "проект" в заголовке
+    project_starts = [j for j, c in enumerate(header) if _norm(c) == 'проект']
+
+    results = {}
+    skip_inn_placeholders = {'7777', '0'}  # строка TOTAL
+
+    for r in range(header_row, len(rows)):  # header_row уже 1-based, что соответствует индексу следующей строки
+        row = rows[r]
+        if not row:
+            continue
+
+        inn_raw = row[col_idx['inn']] if col_idx['inn'] < len(row) else None
+        if inn_raw is None or inn_raw == '':
+            continue
+        try:
+            inn_num = int(_to_float(inn_raw))
+        except (ValueError, TypeError):
+            continue
+        if inn_num < 1000000:  # ИНН минимум 7 цифр; 7777/0 — placeholder TOTAL
+            continue
+        inn = str(inn_num)
+        if inn in skip_inn_placeholders:
+            continue
+
+        def _cellv(key):
+            j = col_idx.get(key)
+            if j is None or j >= len(row): return ''
+            return str(row[j] or '').strip()
+
+        legal_name = _cellv('legal_name')
+        pharm_name = _cellv('pharm_name') or legal_name
+        manager = _cellv('manager')
+        category = _cellv('category')
+
+        # Проекты
+        projects = []
+        for ps in project_starts:
+            block = row[ps:ps + IIIQ_PROJECT_BLOCK_SIZE]
+            if len(block) < IIIQ_PROJECT_BLOCK_SIZE:
+                # padded короткий хвост
+                block = list(block) + [None] * (IIIQ_PROJECT_BLOCK_SIZE - len(block))
+            proj = _parse_iiiq_project_block(block)
+            if proj:
+                projects.append(proj)
+
+        # Агрегаты как в _parse_pharmacy_sheet
+        stats = {'completed': 0, 'partial': 0, 'critical': 0}
+        for p in projects:
+            stats[p['status']] += 1
+
+        bonus_earned = sum(p['bonus_amount_raw'] for p in projects)
+        bonus_pending = sum(
+            (p['quarter_plan_raw'] - sum(m['fact_raw'] for m in p['months'].values())) * p['bonus_percent'] / 100
+            for p in projects
+            if p['percent'] < 100
+        )
+        bonus_pending = max(0, bonus_pending)
+
+        # totals.months — суммируем по всем проектам
+        total_months = {}
+        for m in MONTHS_RU:
+            tp = sum(p['months'][m]['plan_raw'] for p in projects)
+            tf = sum(p['months'][m]['fact_raw'] for p in projects)
+            total_months[m] = {
+                'plan': _fmt_money(tp),
+                'fact': _fmt_money(tf),
+                'percent': int(round(tf / tp * 100)) if tp > 0 else 0,
+            }
+
+        total_quarter_plan = sum(p['quarter_plan_raw'] for p in projects)
+        total_quarter_fact = sum(sum(m['fact_raw'] for m in p['months'].values()) for p in projects)
+        quarter_percent = int(round(total_quarter_fact / total_quarter_plan * 100)) if total_quarter_plan > 0 else 0
+
+        totals = {
+            'quarter_plan': _fmt_money(total_quarter_plan),
+            'quarter_plan_raw': total_quarter_plan,
+            'months': total_months,
+            'quarter_percent': quarter_percent,
+            'remaining': '',
+            'total_bonus': _fmt_money(bonus_earned),
+            'total_bonus_raw': bonus_earned,
+        }
+
+        completed_names = ', '.join(p['name'] for p in projects if p['status'] == 'completed') or '—'
+
+        results[inn] = {
+            'inn': inn,
+            'tg_id': None,  # в III-Q его нет — апсертим без привязки
+            'name': pharm_name,
+            'legal_name': legal_name,
+            'region': '',
+            'district': '',
+            'category': category,
+            'manager': manager,
+            'manager_phone': '',
+            'manager_username': '',
+            'city': '',
+            'projects': projects,
+            'totals': totals,
+            'income_quarter': totals.get('total_bonus', '0'),
+            'stats': stats,
+            'months': totals.get('months', {}),
+            'bonuses': {
+                'accrued': {
+                    'amount': _fmt_money(bonus_earned),
+                    'desc': f"{stats['completed']} проектов на 100%+",
+                },
+                'potential': {
+                    'amount': '+ ' + _fmt_money(bonus_pending),
+                    'desc': f"До цели по {stats['partial'] + stats['critical']} проектам",
+                },
+                'completed': {
+                    'amount': _fmt_money(bonus_earned),
+                    'desc': completed_names,
+                },
+            },
+        }
+
+    return results
+
+
 def _read_all_sheets():
-    """Читает ВСЕ листы из DASHBOARD_SHEET_ID, парсит подходящие."""
+    """
+    Читает аптеки из DASHBOARD_SHEET_ID.
+
+    Приоритет:
+      1) Если есть лист 'III-Q' — парсим только его (одна строка = одна аптека, все
+         проекты в колонках). Возвращаем сразу.
+      2) Иначе fallback: читаем все листы как «Свод таб new» (один лист = одна аптека).
+    """
     wb = _open_workbook()
+
+    # --- III-Q: широкая таблица со всеми аптеками ---
+    iiiq_ws = next((ws for ws in wb.worksheets() if ws.title == IIIQ_SHEET_NAME), None)
+    if iiiq_ws:
+        try:
+            # III-Q может быть очень широкой (18 проектов × 10 колонок + meta) и длинной
+            raw = iiiq_ws.get('A1:HZ3000', value_render_option='UNFORMATTED_VALUE')
+            results = parse_iiiq_sheet(raw)
+            if results:
+                print(f"  ✓ {IIIQ_SHEET_NAME!r}: {len(results)} аптек")
+                return results
+            print(f"⚠️ [DASH] лист {IIIQ_SHEET_NAME!r}: парсер не нашёл данных, пробуем старый формат")
+        except Exception as e:
+            print(f"⚠️ [DASH] лист {IIIQ_SHEET_NAME!r}: {type(e).__name__}: {e}; пробуем старый формат")
+
+    # --- Fallback: парсим каждый лист как одну аптеку ---
     results = {}
     for ws in wb.worksheets():
         try:
-            # raw значения (UNFORMATTED) — числа возвращаются как float, не строки с пробелами
             raw = ws.get('A1:U50', value_render_option='UNFORMATTED_VALUE')
         except Exception as e:
             print(f"⚠️ [DASH] лист {ws.title!r}: ошибка чтения {e}")
@@ -313,43 +615,63 @@ def _read_all_sheets():
         if data:
             results[data['inn']] = data
             print(f"  ✓ {ws.title!r}: ИНН={data['inn']} ({len(data['projects'])} проектов)")
-        # листы без ИНН в C4 молча пропускаются
 
     return results
 
 
 async def _apply_dashboard_updates(by_inn, source_label='DASH'):
-    """Общий upsert для всех аптек. Возвращает summary, пригодный для отчёта в боте."""
-    ok = 0
-    skipped_no_tg = []
+    """
+    Общий upsert для всех аптек.
+
+    - Аптеки с известным tg_id (из «Свод таб new») → upsert_pharmacy_full,
+      одновременно проставляет владельца Telegram.
+    - Аптеки без tg_id (из III-Q) → upsert_pharmacy_dashboard_only,
+      сохраняем dashboard_data, привязку владельца не трогаем.
+    """
+    ok_with_tg = 0
+    ok_no_tg = 0
     errors = []
-    per_pharm = {}  # inn -> {'name', 'tg_id'} для успешно обновлённых
+    per_pharm = {}  # inn -> {'name', 'tg_id'}
     for inn, data in by_inn.items():
-        if not data.get('tg_id'):
-            skipped_no_tg.append({'inn': inn, 'name': data.get('name') or ''})
-            print(f"⚠️ [{source_label}] inn={inn}: TG_ID не найден — пропущена")
-            continue
+        legal_name = data.get('legal_name') or data.get('name') or inn
+        display_name = data.get('name') or inn
         try:
-            await upsert_pharmacy_full(
-                inn=inn,
-                owner_tg_id=data['tg_id'],
-                business_name=data.get('name') or inn,
-                pharmacy_name=data.get('name') or inn,
-                dashboard_data=data,
-            )
-            ok += 1
-            per_pharm[inn] = {'name': data.get('name') or inn, 'tg_id': data['tg_id']}
+            if data.get('tg_id'):
+                await upsert_pharmacy_full(
+                    inn=inn,
+                    owner_tg_id=data['tg_id'],
+                    business_name=legal_name,
+                    pharmacy_name=display_name,
+                    dashboard_data=data,
+                )
+                ok_with_tg += 1
+                per_pharm[inn] = {'name': display_name, 'tg_id': data['tg_id']}
+            else:
+                await upsert_pharmacy_dashboard_only(
+                    inn=inn,
+                    business_name=legal_name,
+                    pharmacy_name=display_name,
+                    dashboard_data=data,
+                )
+                ok_no_tg += 1
+                per_pharm[inn] = {'name': display_name, 'tg_id': None}
         except Exception as e:
             errors.append({'inn': inn, 'error': str(e)})
             print(f"❌ [{source_label}] inn={inn}: {e}")
-    msg = f"✅ [{source_label}] Обновлено аптек: {ok}/{len(by_inn)}"
-    if skipped_no_tg:
-        msg += f"  (пропущено без TG_ID: {len(skipped_no_tg)})"
+
+    ok = ok_with_tg + ok_no_tg
+    msg = f"✅ [{source_label}] Обновлено: {ok}/{len(by_inn)}"
+    if ok_no_tg:
+        msg += f"  (без TG_ID: {ok_no_tg})"
+    if errors:
+        msg += f"  ❌ ошибок: {len(errors)}"
     print(msg)
     return {
         'total_sheets': len(by_inn),
         'updated': ok,
-        'skipped_no_tg': skipped_no_tg,
+        'updated_with_tg': ok_with_tg,
+        'updated_no_tg': ok_no_tg,
+        'skipped_no_tg': [],  # для совместимости с bot.py (раньше использовалось)
         'errors': errors,
         'per_pharm': per_pharm,
     }
@@ -393,13 +715,20 @@ def _read_sheet_rows(ws):
     return raw
 
 
+def _read_iiiq_rows_from_excel(ws):
+    """III-Q может быть очень широкой (200+ колонок) и длинной — читаем больший диапазон."""
+    raw = []
+    for row in ws.iter_rows(min_row=1, max_row=3000, min_col=1, max_col=300, values_only=True):
+        raw.append(list(row))
+    return raw
+
+
 def _read_all_sheets_from_excel(file_path):
     """
     Парсит .xlsx. Стратегия:
-      1) Если есть лист с именем PRIMARY_SHEET_NAME ("Свод таб new") — берём ТОЛЬКО его.
-         Это рабочий лист менеджера: он вписывает ИНН в C4, формулы подтягивают
-         данные конкретной аптеки. Один upload = одна аптека.
-      2) Иначе fallback: пробуем все листы (старое поведение).
+      1) Если есть лист 'III-Q' — берём его (одна строка = одна аптека, массовый импорт).
+      2) Иначе если есть PRIMARY_SHEET_NAME ('Свод таб new') — берём только его (одна аптека).
+      3) Иначе fallback: пробуем все листы (старое поведение).
     """
     from openpyxl import load_workbook
 
@@ -407,6 +736,21 @@ def _read_all_sheets_from_excel(file_path):
     wb = load_workbook(file_path, data_only=True, read_only=True)
     results = {}
 
+    # --- 1. III-Q (массовый импорт) ---
+    iiiq_ws = next((ws for ws in wb.worksheets if ws.title == IIIQ_SHEET_NAME), None)
+    if iiiq_ws:
+        try:
+            raw = _read_iiiq_rows_from_excel(iiiq_ws)
+            results = parse_iiiq_sheet(raw)
+            if results:
+                print(f"  ✓ {IIIQ_SHEET_NAME!r}: {len(results)} аптек")
+                wb.close()
+                return results
+            print(f"⚠️ [XLSX] лист {IIIQ_SHEET_NAME!r}: парсер не нашёл данных, пробуем старый формат")
+        except Exception as e:
+            print(f"⚠️ [XLSX] лист {IIIQ_SHEET_NAME!r}: {type(e).__name__}: {e}; пробуем старый формат")
+
+    # --- 2. Свод таб new (одна аптека) → 3. все листы ---
     primary_ws = next((ws for ws in wb.worksheets if ws.title == PRIMARY_SHEET_NAME), None)
     targets = [primary_ws] if primary_ws else list(wb.worksheets)
 
