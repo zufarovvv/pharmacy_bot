@@ -24,7 +24,7 @@ from database import (
     get_poll_list, get_poll_stats_full
 )
 from screenshot import update_inn_in_sheet, take_screenshot
-from dashboard_sync import sync_dashboard
+from dashboard_sync import sync_dashboard, sync_dashboard_from_excel
 from api import start_api
 
 load_dotenv()
@@ -86,7 +86,12 @@ TEXTS = {
         'generating_excel': "📊 Формирую Excel отчет...",
         'select_poll': "📉 Выберите опрос из списка ниже для выгрузки отчета:",
         'file_accepted': "✅ Файл принят. ID найдены.",
-        'open_app': "📱 Открыть приложение"
+        'open_app': "📱 Открыть приложение",
+        'upload_excel': "📥 Загрузить Excel",
+        'upload_excel_prompt': "📥 Пришлите .xlsx файл с дашбордами аптек (формат «Свод таб», один лист = одна аптека).\n\nДанные сразу обновятся в Mini App.",
+        'upload_excel_processing': "⏳ Парсю Excel и обновляю аптеки...",
+        'upload_excel_bad_ext': "❌ Это не .xlsx файл.",
+        'upload_excel_too_big': "❌ Файл слишком большой (максимум 20 МБ).",
     },
     'uz': {
         'welcome': "Xush kelibsiz!",
@@ -131,7 +136,12 @@ TEXTS = {
         'generating_excel': "📊 Excel hisobot yaratilmoqda...",
         'select_poll': "📉 Hisobot olish uchun so'rovnomani tanlang:",
         'file_accepted': "✅ Fayl qabul qilindi. IDlar topildi.",
-        'open_app': "📱 Ilovani ochish"
+        'open_app': "📱 Ilovani ochish",
+        'upload_excel': "📥 Excel yuklash",
+        'upload_excel_prompt': "📥 Dorixonalar dashboardlari bilan .xlsx faylni yuboring («Свод таб» formati, bir varaq = bir dorixona).\n\nMa'lumotlar darhol Mini App ga yangilanadi.",
+        'upload_excel_processing': "⏳ Excel tahlil qilinmoqda va dorixonalar yangilanmoqda...",
+        'upload_excel_bad_ext': "❌ Bu .xlsx fayl emas.",
+        'upload_excel_too_big': "❌ Fayl juda katta (maksimal 20 MB).",
     }
 }
 
@@ -151,6 +161,7 @@ class AdminState(StatesGroup):
     waiting_for_admin_add = State()
     waiting_for_admin_del = State()
     waiting_for_poll_selection = State()
+    waiting_for_dashboard_excel = State()
 
 
 class FeedbackState(StatesGroup):
@@ -181,7 +192,7 @@ def kb_main(lang, role):
     if role in ['admin', 'superadmin']:
         btns.append([KeyboardButton(text=t['bcast']), KeyboardButton(text=t['pharm_list'])])
     if role == 'superadmin':
-        btns.append([KeyboardButton(text=t['admins'])])
+        btns.append([KeyboardButton(text=t['admins']), KeyboardButton(text=t['upload_excel'])])
     return ReplyKeyboardMarkup(keyboard=btns, resize_keyboard=True)
 
 
@@ -1048,6 +1059,74 @@ async def del_admin_ex(message: types.Message, state: FSMContext):
     tid = int(message.text)
     await update_user_role(tid, 'ghost')
     await message.answer("✅ OK, Admin removed (ghost).")
+    await state.clear()
+    await cmd_start(message, state)
+
+
+# --- ЗАГРУЗКА EXCEL С ДАШБОРДАМИ (superadmin) ---
+MAX_DASHBOARD_XLSX_BYTES = 20 * 1024 * 1024  # 20 MB
+
+@dp.message(F.text.in_(["📥 Загрузить Excel", "📥 Excel yuklash"]))
+async def upload_dashboard_excel_start(message: types.Message, state: FSMContext):
+    user = await get_user_data(message.from_user.id)
+    if user['role'] != 'superadmin': return
+    lang = user['language']
+    await message.answer(TEXTS[lang]['upload_excel_prompt'], reply_markup=kb_back(lang))
+    await state.set_state(AdminState.waiting_for_dashboard_excel)
+
+
+@dp.message(AdminState.waiting_for_dashboard_excel)
+async def upload_dashboard_excel_recv(message: types.Message, state: FSMContext):
+    user = await get_user_data(message.from_user.id)
+    if user['role'] != 'superadmin':
+        await state.clear()
+        return
+
+    lang = user['language']
+    doc = message.document
+    if not doc:
+        return await message.answer("❌ Жду документ .xlsx")
+    if not (doc.file_name or '').lower().endswith('.xlsx'):
+        return await message.answer(TEXTS[lang]['upload_excel_bad_ext'])
+    if doc.file_size and doc.file_size > MAX_DASHBOARD_XLSX_BYTES:
+        return await message.answer(TEXTS[lang]['upload_excel_too_big'])
+
+    file_path = f"dashboard_upload_{message.from_user.id}.xlsx"
+    try:
+        file = await bot.get_file(doc.file_id)
+        await bot.download_file(file.file_path, file_path)
+    except Exception as e:
+        await state.clear()
+        return await message.answer(f"❌ Ошибка скачивания: {e}")
+
+    status_msg = await message.answer(TEXTS[lang]['upload_excel_processing'])
+
+    try:
+        result = await sync_dashboard_from_excel(file_path)
+    except Exception as e:
+        result = {'error': f'{type(e).__name__}: {e}', 'updated': 0}
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    # Формируем отчёт
+    if result.get('error'):
+        text = f"❌ Ошибка: {result['error']}"
+    else:
+        text = (
+            f"✅ Обновлено: <b>{result['updated']}</b> из {result['total_sheets']} листов\n"
+        )
+        skipped = result.get('skipped_no_tg') or []
+        if skipped:
+            preview = ", ".join(s['inn'] for s in skipped[:5])
+            more = f" и ещё {len(skipped) - 5}" if len(skipped) > 5 else ""
+            text += f"\n⚠️ Без TG_ID ({len(skipped)}): {preview}{more}"
+        errors = result.get('errors') or []
+        if errors:
+            preview = "; ".join(f"{e['inn']}: {e['error']}" for e in errors[:3])
+            text += f"\n❌ Ошибок: {len(errors)}\n{preview}"
+
+    await status_msg.edit_text(text, parse_mode='HTML')
     await state.clear()
     await cmd_start(message, state)
 

@@ -318,6 +318,40 @@ def _read_all_sheets():
     return results
 
 
+async def _apply_dashboard_updates(by_inn, source_label='DASH'):
+    """Общий upsert для всех аптек. Возвращает summary, пригодный для отчёта в боте."""
+    ok = 0
+    skipped_no_tg = []
+    errors = []
+    for inn, data in by_inn.items():
+        if not data.get('tg_id'):
+            skipped_no_tg.append({'inn': inn, 'name': data.get('name') or ''})
+            print(f"⚠️ [{source_label}] inn={inn}: TG_ID не найден — пропущена")
+            continue
+        try:
+            await upsert_pharmacy_full(
+                inn=inn,
+                owner_tg_id=data['tg_id'],
+                business_name=data.get('name') or inn,
+                pharmacy_name=data.get('name') or inn,
+                dashboard_data=data,
+            )
+            ok += 1
+        except Exception as e:
+            errors.append({'inn': inn, 'error': str(e)})
+            print(f"❌ [{source_label}] inn={inn}: {e}")
+    msg = f"✅ [{source_label}] Обновлено аптек: {ok}/{len(by_inn)}"
+    if skipped_no_tg:
+        msg += f"  (пропущено без TG_ID: {len(skipped_no_tg)})"
+    print(msg)
+    return {
+        'total_sheets': len(by_inn),
+        'updated': ok,
+        'skipped_no_tg': skipped_no_tg,
+        'errors': errors,
+    }
+
+
 async def sync_dashboard():
     if not DASHBOARD_SHEET_ID:
         print("⚠️ [DASH] DASHBOARD_SHEET_ID не задан в .env — синк пропущен")
@@ -335,29 +369,52 @@ async def sync_dashboard():
         print("⚠️ [DASH] Ни одного листа с ИНН не найдено.")
         return
 
-    ok = 0
-    skipped = 0
-    for inn, data in by_inn.items():
-        if not data.get('tg_id'):
-            print(f"⚠️ [DASH] inn={inn}: TG_ID не найден (вписать в A4/B2/etc) — пропущена")
-            skipped += 1
-            continue
-        try:
-            await upsert_pharmacy_full(
-                inn=inn,
-                owner_tg_id=data['tg_id'],
-                business_name=data.get('name') or inn,
-                pharmacy_name=data.get('name') or inn,
-                dashboard_data=data,
-            )
-            ok += 1
-        except Exception as e:
-            print(f"❌ [DASH] inn={inn}: {e}")
+    await _apply_dashboard_updates(by_inn, source_label='DASH')
 
-    msg = f"✅ [DASH] Обновлено аптек: {ok}/{len(by_inn)}"
-    if skipped:
-        msg += f"  (пропущено без TG_ID: {skipped})"
-    print(msg)
+
+# ============================================================
+# Импорт из локального Excel-файла (.xlsx).
+# Менеджер шлёт файл в бот → bot.py качает → вызывает эту функцию.
+# Формат листов — тот же что в Google Sheets («Свод таб»).
+# ============================================================
+def _read_all_sheets_from_excel(file_path):
+    """Читает все листы из .xlsx тем же способом что _read_all_sheets читает Google Sheets."""
+    from openpyxl import load_workbook
+
+    # data_only=True — берём вычисленные значения формул, а не сами формулы
+    wb = load_workbook(file_path, data_only=True, read_only=True)
+    results = {}
+    for ws in wb.worksheets:
+        try:
+            raw = []
+            for row in ws.iter_rows(min_row=1, max_row=50, min_col=1, max_col=21, values_only=True):
+                raw.append(list(row))
+        except Exception as e:
+            print(f"⚠️ [XLSX] лист {ws.title!r}: ошибка чтения {e}")
+            continue
+
+        data = _parse_pharmacy_sheet(raw)
+        if data:
+            results[data['inn']] = data
+            print(f"  ✓ {ws.title!r}: ИНН={data['inn']} ({len(data['projects'])} проектов)")
+    wb.close()
+    return results
+
+
+async def sync_dashboard_from_excel(file_path):
+    """Импортирует все аптеки из локального .xlsx-файла. Возвращает summary."""
+    print(f"🔄 [XLSX] Чтение {file_path}...")
+    loop = asyncio.get_running_loop()
+    try:
+        by_inn = await loop.run_in_executor(None, _read_all_sheets_from_excel, file_path)
+    except Exception as e:
+        print(f"❌ [XLSX] Ошибка чтения файла: {type(e).__name__}: {e}")
+        return {'error': f'{type(e).__name__}: {e}', 'updated': 0}
+
+    if not by_inn:
+        return {'error': 'Ни одного листа с ИНН не найдено', 'updated': 0}
+
+    return await _apply_dashboard_updates(by_inn, source_label='XLSX')
 
 
 if __name__ == "__main__":
