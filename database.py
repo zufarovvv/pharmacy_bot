@@ -62,7 +62,23 @@ async def create_tables():
         ''')
 
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_owner_tg ON pharmacies(owner_tg_id);')
-        print("✅ База данных готова (включая таблицы опросов).")
+
+        # --- ЛОГ СОБЫТИЙ (клики и действия в Mini App) ---
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS events (
+                id BIGSERIAL PRIMARY KEY,
+                tg_id BIGINT,
+                pharmacy_inn VARCHAR(50),
+                event_type VARCHAR(64) NOT NULL,
+                payload JSONB DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        ''')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_events_tg ON events(tg_id);')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at DESC);')
+
+        print("✅ База данных готова (включая таблицы опросов и событий).")
     finally:
         await conn.close()
 
@@ -277,6 +293,91 @@ async def get_poll_stats_full(poll_id):
         ''', poll_id)
     finally:
         await conn.close()
+
+# --- СОБЫТИЯ / АНАЛИТИКА ---
+
+async def log_event(tg_id, event_type, pharmacy_inn=None, payload=None):
+    """Сохраняет событие в таблицу events. Не падает при любых ошибках."""
+    conn = await get_connection()
+    try:
+        await conn.execute('''
+            INSERT INTO events (tg_id, pharmacy_inn, event_type, payload)
+            VALUES ($1, $2, $3, $4::jsonb);
+        ''', tg_id, pharmacy_inn, event_type, json.dumps(payload or {}, ensure_ascii=False))
+    finally:
+        await conn.close()
+
+
+async def get_event_stats(days=7):
+    """
+    Возвращает агрегаты по событиям за последние N дней:
+      - total: всего событий
+      - active_users: уникальных tg_id
+      - by_type: [{event_type, count}] по убыванию count
+      - top_pharmacies: топ-5 аптек по числу действий (по ИНН → имя)
+      - top_users: топ-5 юзеров (tg_id → кол-во)
+      - per_day: события по дням (для графика)
+    """
+    conn = await get_connection()
+    try:
+        total_row = await conn.fetchrow('''
+            SELECT COUNT(*) as total,
+                   COUNT(DISTINCT tg_id) as active_users
+            FROM events
+            WHERE created_at >= NOW() - ($1::int || ' days')::interval
+        ''', days)
+
+        by_type = await conn.fetch('''
+            SELECT event_type, COUNT(*) as n
+            FROM events
+            WHERE created_at >= NOW() - ($1::int || ' days')::interval
+            GROUP BY event_type
+            ORDER BY n DESC
+            LIMIT 30
+        ''', days)
+
+        top_pharmacies = await conn.fetch('''
+            SELECT e.pharmacy_inn, COUNT(*) as n,
+                   COALESCE(p.pharmacy_name, p.business_name, e.pharmacy_inn) as name
+            FROM events e
+            LEFT JOIN pharmacies p ON e.pharmacy_inn = p.inn
+            WHERE e.created_at >= NOW() - ($1::int || ' days')::interval
+              AND e.pharmacy_inn IS NOT NULL
+            GROUP BY e.pharmacy_inn, p.pharmacy_name, p.business_name
+            ORDER BY n DESC
+            LIMIT 5
+        ''', days)
+
+        top_users = await conn.fetch('''
+            SELECT tg_id, COUNT(*) as n
+            FROM events
+            WHERE created_at >= NOW() - ($1::int || ' days')::interval
+              AND tg_id IS NOT NULL
+            GROUP BY tg_id
+            ORDER BY n DESC
+            LIMIT 5
+        ''', days)
+
+        per_day = await conn.fetch('''
+            SELECT DATE(created_at) as day, COUNT(*) as n
+            FROM events
+            WHERE created_at >= NOW() - ($1::int || ' days')::interval
+            GROUP BY day
+            ORDER BY day ASC
+        ''', days)
+
+        return {
+            'days': days,
+            'total': total_row['total'] if total_row else 0,
+            'active_users': total_row['active_users'] if total_row else 0,
+            'by_type': [{'event_type': r['event_type'], 'count': r['n']} for r in by_type],
+            'top_pharmacies': [{'inn': r['pharmacy_inn'], 'name': r['name'], 'count': r['n']} for r in top_pharmacies],
+            'top_users': [{'tg_id': r['tg_id'], 'count': r['n']} for r in top_users],
+            'per_day': [{'day': r['day'].isoformat(), 'count': r['n']} for r in per_day],
+        }
+    finally:
+        await conn.close()
+
 
 if __name__ == "__main__":
     import asyncio

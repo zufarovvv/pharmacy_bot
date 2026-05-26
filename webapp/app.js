@@ -4,6 +4,7 @@
 
 const API_BASE = window.location.origin;
 let userData = null;
+let currentPharmInn = null;  // ИНН аптеки, на которую сейчас смотрим (для трекинга)
 let allProjects = [];
 let currentFilter = 'all';
 let currentSearch = '';
@@ -13,8 +14,10 @@ let adminPharmacies = [];
 let adminManagers = [];
 let adminSearch = '';
 let adminFilter = 'all';
-let adminTab = 'pharms'; // 'pharms' | 'managers'
+let adminTab = 'pharms'; // 'pharms' | 'managers' | 'activity'
 let adminMgrFilter = null; // имя менеджера для фильтра аптек
+let activityPeriodDays = 7;
+let activityCache = null;
 
 // ============================================================
 // LANGUAGE DICTIONARY
@@ -131,6 +134,35 @@ const LANG = {
     adminNoMgr: 'без менеджера',
     tabPharms: 'Аптеки',
     tabManagers: 'Менеджеры',
+    tabActivity: 'Активность',
+    activitySubtitle: 'за {days} дн.',
+    activityKpiTotal: 'Всего действий',
+    activityKpiUsers: 'Активных юзеров',
+    activityByType: 'По типам',
+    activityTopPharm: 'Топ аптек',
+    activityTopUsers: 'Топ юзеров (tg_id)',
+    activityPeriod7: '7 дней',
+    activityPeriod30: '30 дней',
+    activityPeriod90: '90 дней',
+    activityEmpty: 'Пока нет событий за этот период',
+    activityLoading: 'Загрузка...',
+    evtAppOpen: 'Открытие приложения',
+    evtTabSwitch: 'Смена вкладки',
+    evtPharmacyOpen: 'Открытие аптеки',
+    evtManagerOpen: 'Открытие менеджера',
+    evtProjectClick: 'Клик по проекту',
+    evtContactManager: 'Связь с менеджером',
+    evtPhoneClick: 'Клик по телефону',
+    evtTgClick: 'Клик по Telegram',
+    evtAlertBarClick: 'Клик по алерту',
+    evtPromoShown: 'Показ промо',
+    evtPromoCta: 'Промо: CTA',
+    evtPromoSkip: 'Промо: пропуск',
+    evtLanguageSwitch: 'Смена языка',
+    evtTourStarted: 'Тур: старт',
+    evtTourFinished: 'Тур: финиш',
+    evtTourSkipped: 'Тур: пропуск',
+    evtManagerFilterClear: 'Снять фильтр менеджера',
     mgrStatTotal: 'Аптек',
     mgrStatCompleted: 'План',
     mgrStatPartial: 'Работа',
@@ -251,6 +283,18 @@ const LANG = {
     adminNoMgr: 'menejersiz',
     tabPharms: 'Dorixonalar',
     tabManagers: 'Menejerlar',
+    tabActivity: 'Faollik',
+    activitySubtitle: '{days} kun ichida',
+    activityKpiTotal: 'Jami amallar',
+    activityKpiUsers: 'Faol foydalanuvchilar',
+    activityByType: 'Turlari',
+    activityTopPharm: 'Top dorixonalar',
+    activityTopUsers: 'Top foydalanuvchilar',
+    activityPeriod7: '7 kun',
+    activityPeriod30: '30 kun',
+    activityPeriod90: '90 kun',
+    activityEmpty: 'Bu davrda hodisalar yo\'q',
+    activityLoading: 'Yuklanmoqda...',
     mgrStatTotal: 'Dorixona',
     mgrStatCompleted: 'Reja',
     mgrStatPartial: 'Ishda',
@@ -283,6 +327,7 @@ function applyLang() {
 
 window.setLang = function(lang) {
   if (lang !== 'ru' && lang !== 'uz') return;
+  trackEvent('language_switch', { lang });
   currentLang = lang;
   try { localStorage.setItem('datfo_lang', lang); } catch (e) {}
   applyLang();
@@ -367,6 +412,12 @@ async function loadUserData() {
     }
     userData = await res.json();
     window.userData = userData;
+    trackEvent('app_open', {
+      role: userData.role,
+      is_admin: !!userData.is_admin,
+      pharm_count: (userData.pharmacies || []).length,
+      auth: userData.auth_source,
+    });
     // Если язык не был сохранён вручную — взять из профиля БД
     try {
       if (!localStorage.getItem('datfo_lang') && userData.language === 'uz') {
@@ -399,6 +450,7 @@ function render(data) {
 }
 
 function renderDashboard(pharm) {
+  currentPharmInn = pharm.inn || null;
   const d = pharm.dashboard || {};
   renderPharmacy(pharm, d);
   renderAlertBar(d);
@@ -430,8 +482,9 @@ function showAdminList() {
 }
 
 window.setAdminTab = function(tab) {
-  if (tab !== 'pharms' && tab !== 'managers') return;
+  if (tab !== 'pharms' && tab !== 'managers' && tab !== 'activity') return;
   adminTab = tab;
+  trackEvent('tab_switch', { tab });
   applyAdminTab();
 };
 
@@ -441,19 +494,29 @@ function applyAdminTab() {
   });
   const pharmList = document.getElementById('adminPharmList');
   const mgrList = document.getElementById('adminMgrList');
+  const activityView = document.getElementById('adminActivityView');
   const filters = document.getElementById('adminFiltersCard');
   const title = document.getElementById('adminSummaryTitle');
   const count = document.getElementById('adminCount');
+
+  pharmList.style.display = 'none';
+  mgrList.style.display = 'none';
+  activityView.style.display = 'none';
+
   if (adminTab === 'managers') {
-    pharmList.style.display = 'none';
     mgrList.style.display = '';
     filters.style.display = 'none';
     title.textContent = t('tabManagers');
     count.textContent = t('adminMgrSubtitle', { n: adminManagers.length });
     renderAdminMgrList();
+  } else if (adminTab === 'activity') {
+    activityView.style.display = '';
+    filters.style.display = 'none';
+    title.textContent = t('tabActivity');
+    count.textContent = t('activitySubtitle', { days: activityPeriodDays });
+    loadAndRenderActivity();
   } else {
     pharmList.style.display = '';
-    mgrList.style.display = 'none';
     filters.style.display = '';
     title.textContent = t('adminTitle');
     count.textContent = t('adminSubtitle', { n: adminPharmacies.length });
@@ -462,12 +525,14 @@ function applyAdminTab() {
 }
 
 window.clearMgrFilter = function() {
+  trackEvent('manager_filter_clear', {});
   adminMgrFilter = null;
   document.getElementById('adminMgrFilterChip').style.display = 'none';
   renderAdminList();
 };
 
 window.filterByManager = function(name) {
+  trackEvent('manager_open', { name });
   adminMgrFilter = name;
   adminTab = 'pharms';
   applyAdminTab();
@@ -487,6 +552,7 @@ function showDashboardView(fromAdmin) {
 window.selectPharmacy = function(inn) {
   const pharm = adminPharmacies.find(p => String(p.inn) === String(inn));
   if (!pharm) return;
+  trackEvent('pharmacy_open', { inn });
   renderDashboard(pharm);
   showDashboardView(true);
 };
@@ -550,6 +616,142 @@ function statusOf(pharm) {
   if (n >= 100) return 'completed';
   if (n >= 50) return 'partial';
   return 'critical';
+}
+
+// ============================================================
+// ACTIVITY DASHBOARD (вкладка "Активность")
+// ============================================================
+async function loadAndRenderActivity() {
+  const root = document.getElementById('adminActivityView');
+  root.innerHTML = renderActivityShell(null); // показываем shell с лоадером
+
+  try {
+    const initData = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || '';
+    const urlParams = new URLSearchParams(window.location.search);
+    const tgIdFromUrl = urlParams.get('tg_id');
+    const url = new URL(API_BASE + '/api/admin/stats');
+    url.searchParams.set('days', String(activityPeriodDays));
+    if (initData) url.searchParams.set('init_data', initData);
+    else if (tgIdFromUrl) url.searchParams.set('tg_id', tgIdFromUrl);
+
+    const res = await fetch(url, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+        ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
+      },
+    });
+    if (!res.ok) {
+      root.innerHTML = renderActivityShell({ error: 'API ' + res.status });
+      return;
+    }
+    activityCache = await res.json();
+    root.innerHTML = renderActivityShell(activityCache);
+  } catch (e) {
+    root.innerHTML = renderActivityShell({ error: e.message });
+  }
+}
+
+window.setActivityPeriod = function(days) {
+  activityPeriodDays = days;
+  document.getElementById('adminCount').textContent = t('activitySubtitle', { days });
+  loadAndRenderActivity();
+};
+
+const EVENT_LABELS = {
+  app_open: 'evtAppOpen',
+  tab_switch: 'evtTabSwitch',
+  pharmacy_open: 'evtPharmacyOpen',
+  manager_open: 'evtManagerOpen',
+  project_click: 'evtProjectClick',
+  contact_manager: 'evtContactManager',
+  phone_click: 'evtPhoneClick',
+  tg_click: 'evtTgClick',
+  alert_bar_click: 'evtAlertBarClick',
+  promo_shown: 'evtPromoShown',
+  promo_cta: 'evtPromoCta',
+  promo_skip: 'evtPromoSkip',
+  language_switch: 'evtLanguageSwitch',
+  tour_started: 'evtTourStarted',
+  tour_finished: 'evtTourFinished',
+  tour_skipped: 'evtTourSkipped',
+  manager_filter_clear: 'evtManagerFilterClear',
+};
+
+function labelForEvent(type) {
+  const key = EVENT_LABELS[type];
+  return key ? t(key) : type;
+}
+
+function renderActivityShell(stats) {
+  const periodBtns = [7, 30, 90].map(d => `
+    <button class="activity-period-btn ${activityPeriodDays === d ? 'active' : ''}" onclick="setActivityPeriod(${d})">${t('activityPeriod' + d)}</button>
+  `).join('');
+
+  if (stats === null) {
+    return `
+      <div class="activity-period">${periodBtns}</div>
+      <div class="activity-empty">${t('activityLoading')}</div>
+    `;
+  }
+  if (stats.error) {
+    return `
+      <div class="activity-period">${periodBtns}</div>
+      <div class="activity-empty">⚠ ${escapeHtml(stats.error)}</div>
+    `;
+  }
+  if (!stats.total) {
+    return `
+      <div class="activity-period">${periodBtns}</div>
+      <div class="activity-empty">${t('activityEmpty')}</div>
+    `;
+  }
+
+  const byType = (stats.by_type || []).map(r => `
+    <div class="activity-row">
+      <div class="activity-row-name">${escapeHtml(labelForEvent(r.event_type))}</div>
+      <div class="activity-row-num">${r.count}</div>
+    </div>
+  `).join('');
+
+  const topPharm = (stats.top_pharmacies || []).map(r => `
+    <div class="activity-row">
+      <div class="activity-row-name">${escapeHtml(r.name || r.inn)}</div>
+      <div class="activity-row-num">${r.count}</div>
+    </div>
+  `).join('') || `<div class="activity-empty">—</div>`;
+
+  const topUsers = (stats.top_users || []).map(r => `
+    <div class="activity-row">
+      <div class="activity-row-name"><code>${r.tg_id}</code></div>
+      <div class="activity-row-num">${r.count}</div>
+    </div>
+  `).join('') || `<div class="activity-empty">—</div>`;
+
+  return `
+    <div class="activity-period">${periodBtns}</div>
+    <div class="activity-kpis">
+      <div class="activity-kpi">
+        <div class="activity-kpi-label">${t('activityKpiTotal')}</div>
+        <div class="activity-kpi-num">${stats.total}</div>
+      </div>
+      <div class="activity-kpi">
+        <div class="activity-kpi-label">${t('activityKpiUsers')}</div>
+        <div class="activity-kpi-num">${stats.active_users}</div>
+      </div>
+    </div>
+    <div class="activity-section">
+      <div class="activity-section-title">${t('activityByType')}</div>
+      ${byType}
+    </div>
+    <div class="activity-section">
+      <div class="activity-section-title">${t('activityTopPharm')}</div>
+      ${topPharm}
+    </div>
+    <div class="activity-section">
+      <div class="activity-section-title">${t('activityTopUsers')}</div>
+      ${topUsers}
+    </div>
+  `;
 }
 
 function renderAdminMgrList() {
@@ -706,8 +908,7 @@ function renderAlertBar(d) {
 }
 
 window.alertBarClick = function() {
-  // Любой клик по алерту → открываем контакт менеджера
-  // (главная цель алерта — спровоцировать связь с менеджером)
+  trackEvent('alert_bar_click', { context: currentAlertContext });
   contactManager();
 };
 
@@ -810,6 +1011,8 @@ function buildPromoContent(d) {
   };
 }
 
+let promoScenario = null;  // запоминаем сценарий, чтобы отправить с CTA/skip
+
 function showPromo(promo) {
   const overlay = document.getElementById('promoOverlay');
   if (!overlay) return;
@@ -819,16 +1022,23 @@ function showPromo(promo) {
   document.getElementById('promoText').innerHTML = promo.text;
   document.getElementById('promoCta').textContent = promo.ctaText;
   overlay.classList.add('active');
+  promoScenario = promo.icon;  // используем иконку как код сценария (🔥/💰/🚀/⭐)
+  trackEvent('promo_shown', { scenario: promoScenario });
   try { sessionStorage.setItem('datfo_promo_shown', '1'); } catch (e) {}
 }
 
 window.closePromo = function() {
   const overlay = document.getElementById('promoOverlay');
+  if (overlay && overlay.classList.contains('active')) {
+    trackEvent('promo_skip', { scenario: promoScenario });
+  }
   if (overlay) overlay.classList.remove('active');
 };
 
 window.promoCtaClick = function() {
-  window.closePromo();
+  trackEvent('promo_cta', { scenario: promoScenario });
+  const overlay = document.getElementById('promoOverlay');
+  if (overlay) overlay.classList.remove('active');
   contactManager();
 };
 
@@ -1016,6 +1226,7 @@ function renderDeadline() {
 
 // CTA: показать модалку контактов менеджера
 window.contactManager = function() {
+  trackEvent('contact_manager', {});
   const d = (window.userData && window.userData.pharmacies && window.userData.pharmacies[0]
     && window.userData.pharmacies[0].dashboard) || {};
   const name = d.manager || '';
@@ -1081,6 +1292,7 @@ window.closeManager = function(e) {
 
 window.openExternal = function(url, e) {
   if (e) e.preventDefault();
+  trackEvent('phone_click', {});
   const tg = window.Telegram && window.Telegram.WebApp;
   if (tg && tg.openLink) tg.openLink(url);
   else window.location.href = url;
@@ -1088,6 +1300,7 @@ window.openExternal = function(url, e) {
 
 window.openTg = function(username, e) {
   if (e) e.preventDefault();
+  trackEvent('tg_click', { username });
   const link = 'https://t.me/' + username;
   const tg = window.Telegram && window.Telegram.WebApp;
   if (tg && tg.openTelegramLink) tg.openTelegramLink(link);
@@ -1097,6 +1310,7 @@ window.openTg = function(username, e) {
 
 
 window.showProjectProducts = function(projectName) {
+  trackEvent('project_click', { project: projectName });
   const tg = window.Telegram && window.Telegram.WebApp;
   const msg = t('productsStub', { name: projectName });
   if (tg && tg.showAlert) tg.showAlert(msg);
@@ -1130,8 +1344,10 @@ const tourStepsConfig = [
 let tourIndex = 0;
 window.tourShowWelcome = function() { document.getElementById('tourWelcome').classList.add('active'); };
 function tourHideWelcome() { document.getElementById('tourWelcome').classList.remove('active'); }
-window.tourStart = function() { tourHideWelcome(); tourIndex = 0; document.getElementById('tourOverlay').classList.add('active'); tourRender(); };
+window.tourStart = function() { trackEvent('tour_started', {}); tourHideWelcome(); tourIndex = 0; document.getElementById('tourOverlay').classList.add('active'); tourRender(); };
 window.tourFinish = function() {
+  const wasActive = document.getElementById('tourOverlay').classList.contains('active');
+  trackEvent(wasActive ? 'tour_finished' : 'tour_skipped', { step: tourIndex });
   tourHideWelcome();
   document.getElementById('tourOverlay').classList.remove('active');
   try { localStorage.setItem('datfo_tour_done', '1'); } catch (e) {}
@@ -1182,6 +1398,38 @@ window.addEventListener('load', () => {
 function setText(selector, value) {
   const el = document.querySelector(selector);
   if (el && value != null) el.textContent = value;
+}
+
+// ============================================================
+// EVENT TRACKING (fire-and-forget POST /api/events)
+// ============================================================
+function trackEvent(name, payload) {
+  try {
+    const initData = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || '';
+    const urlParams = new URLSearchParams(window.location.search);
+    const tgIdFromUrl = urlParams.get('tg_id');
+    const url = new URL(API_BASE + '/api/events');
+    if (initData) url.searchParams.set('init_data', initData);
+    else if (tgIdFromUrl) url.searchParams.set('tg_id', tgIdFromUrl);
+
+    const body = {
+      event: name,
+      pharmacy_inn: currentPharmInn || null,
+      payload: payload || {},
+    };
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+        ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
+      },
+      body: JSON.stringify(body),
+      keepalive: true,  // позволяет запросу долететь даже если страницу закрыли
+    }).catch(() => { /* тихо игнорируем — трекинг не критичен */ });
+  } catch (e) {
+    /* трекинг не должен ломать UI */
+  }
 }
 function escapeHtml(s) {
   return String(s == null ? '' : s)

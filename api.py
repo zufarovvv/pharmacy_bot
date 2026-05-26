@@ -17,7 +17,10 @@ from aiohttp import web
 import aiohttp_cors
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 
-from database import get_user_data, get_pharmacies_by_tg_id, get_all_pharmacies_extended
+from database import (
+    get_user_data, get_pharmacies_by_tg_id, get_all_pharmacies_extended,
+    log_event, get_event_stats,
+)
 
 log = logging.getLogger(__name__)
 
@@ -181,6 +184,85 @@ async def handle_health(request: web.Request):
     return web.json_response({'ok': True})
 
 
+# Whitelist допустимых типов событий — чтобы фронт не флудил произвольным мусором
+ALLOWED_EVENT_TYPES = {
+    'app_open',
+    'tab_switch',
+    'pharmacy_open',
+    'manager_open',
+    'manager_filter_clear',
+    'project_click',
+    'contact_manager',
+    'phone_click',
+    'tg_click',
+    'alert_bar_click',
+    'promo_shown',
+    'promo_cta',
+    'promo_skip',
+    'language_switch',
+    'tour_started',
+    'tour_finished',
+    'tour_skipped',
+}
+
+
+async def handle_events(request: web.Request):
+    """Принимает событие с фронта и пишет в лог. Тихо игнорирует мусор."""
+    tg_id, _ = await resolve_tg_id(request)
+    if not tg_id:
+        return web.json_response({'error': 'unauthorized'}, status=401)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'error': 'bad_json'}, status=400)
+
+    event_type = body.get('event') or body.get('event_type')
+    if not event_type or event_type not in ALLOWED_EVENT_TYPES:
+        return web.json_response({'error': 'unknown_event'}, status=400)
+
+    pharmacy_inn = body.get('pharmacy_inn')
+    if pharmacy_inn is not None:
+        pharmacy_inn = str(pharmacy_inn)[:50]
+    payload = body.get('payload') or {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    try:
+        await log_event(tg_id, event_type, pharmacy_inn=pharmacy_inn, payload=payload)
+    except Exception as e:
+        log.warning(f"log_event failed: {e}")
+        return web.json_response({'ok': False}, status=500)
+
+    return web.json_response({'ok': True})
+
+
+async def handle_admin_stats(request: web.Request):
+    """Сводка по событиям. Только для admin/superadmin."""
+    tg_id, _ = await resolve_tg_id(request)
+    if not tg_id:
+        return web.json_response({'error': 'unauthorized'}, status=401)
+
+    user = await get_user_data(tg_id)
+    if not user or user['role'] not in ('admin', 'superadmin'):
+        return web.json_response({'error': 'forbidden'}, status=403)
+
+    days = 7
+    try:
+        days = int(request.query.get('days', '7'))
+    except (TypeError, ValueError):
+        pass
+    days = max(1, min(days, 90))  # ограничим разумными пределами
+
+    try:
+        stats = await get_event_stats(days=days)
+    except Exception as e:
+        log.warning(f"get_event_stats failed: {e}")
+        return web.json_response({'error': 'db'}, status=500)
+
+    return web.json_response(stats)
+
+
 async def handle_webapp_root(request: web.Request):
     """Отдаёт webapp/index.html при заходе на корень."""
     index = WEBAPP_DIR / 'index.html'
@@ -214,6 +296,8 @@ def create_app() -> web.Application:
     # API эндпоинты
     app.router.add_get('/api/me', handle_me)
     app.router.add_get('/api/health', handle_health)
+    app.router.add_post('/api/events', handle_events)
+    app.router.add_get('/api/admin/stats', handle_admin_stats)
 
     # Web App — раздаём всю папку webapp/ как статику; корень → index.html
     app.router.add_get('/', handle_webapp_root)
@@ -225,7 +309,7 @@ def create_app() -> web.Application:
             allow_credentials=False,
             expose_headers='*',
             allow_headers='*',
-            allow_methods=['GET', 'OPTIONS'],
+            allow_methods=['GET', 'POST', 'OPTIONS'],
         )
     })
     # CORS — только для API роутов (статике он не нужен и aiohttp_cors не умеет static)

@@ -533,6 +533,65 @@ body {
 .mgr-card-bonus { font-size: 12px; color: var(--text-secondary); margin-top: 10px; }
 .mgr-card-bonus b { color: var(--primary); font-weight: 700; }
 
+/* ===== ACTIVITY DASHBOARD ===== */
+.activity-period {
+  display: flex; gap: 6px;
+  background: var(--bg-secondary);
+  border-radius: 10px; padding: 4px;
+  margin-top: 8px;
+}
+.activity-period-btn {
+  flex: 1;
+  font-family: inherit; font-size: 12px; font-weight: 700;
+  background: transparent; color: var(--text-secondary);
+  border: none; cursor: pointer;
+  padding: 8px; border-radius: 8px;
+}
+.activity-period-btn.active { background: var(--surface); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+.activity-kpis {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 8px; margin-top: 12px;
+}
+.activity-kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+.activity-kpi-label {
+  font-size: 11px; color: var(--text-muted);
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.activity-kpi-num { font-size: 28px; font-weight: 900; margin-top: 4px; color: var(--text-primary); letter-spacing: -1px; }
+.activity-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-top: 12px;
+}
+.activity-section-title {
+  font-size: 12px; font-weight: 800;
+  color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+.activity-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.activity-row:last-child { border-bottom: none; }
+.activity-row-name { color: var(--text-primary); font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-row-num { color: var(--primary); font-weight: 800; font-size: 15px; }
+.activity-empty {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 /* ===== TRIGGER ALERT BAR ===== */
 .alert-bar {
   width: 100%;
@@ -694,6 +753,7 @@ body {
   <div class="admin-tabs">
     <button class="admin-tab active" data-tab="pharms" onclick="setAdminTab('pharms')" data-i18n="tabPharms">Аптеки</button>
     <button class="admin-tab" data-tab="managers" onclick="setAdminTab('managers')" data-i18n="tabManagers">Менеджеры</button>
+    <button class="admin-tab" data-tab="activity" onclick="setAdminTab('activity')" data-i18n="tabActivity">Активность</button>
   </div>
 
   <section class="card" id="adminFiltersCard" style="padding: 12px;">
@@ -714,6 +774,7 @@ body {
 
   <div id="adminPharmList"></div>
   <div id="adminMgrList" style="display:none;"></div>
+  <div id="adminActivityView" style="display:none;"></div>
 </div>
 
 <!-- ===== DASHBOARD (per-pharmacy) ===== -->
