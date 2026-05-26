@@ -95,7 +95,7 @@ async def handle_me(request: web.Request):
                 return {}
         return value
 
-    pharm_dicts = [
+    pharm_dicts_full = [
         {
             'id': p['id'],
             'inn': p['inn'],
@@ -107,7 +107,15 @@ async def handle_me(request: web.Request):
     ]
 
     # Для админов считаем сводку по менеджерам — для контроля их работы.
-    managers = _aggregate_managers(pharm_dicts) if is_admin else None
+    managers = _aggregate_managers(pharm_dicts_full) if is_admin else None
+
+    # Для админа в списке тащить ПОЛНЫЕ dashboard_data всех аптек — медленно.
+    # Отдаём slim-версию (только то что рисуется в строке списка); полные данные
+    # фронт догружает через /api/pharmacy/{inn} когда админ кликнет конкретную.
+    if is_admin:
+        pharm_payload = [_slim_pharmacy(p) for p in pharm_dicts_full]
+    else:
+        pharm_payload = pharm_dicts_full
 
     return web.json_response({
         'tg_id': tg_id,
@@ -115,9 +123,39 @@ async def handle_me(request: web.Request):
         'role': user['role'],
         'is_admin': is_admin,
         'language': user['language'],
-        'pharmacies': pharm_dicts,
+        'pharmacies': pharm_payload,
         'managers': managers,
     })
+
+
+def _slim_pharmacy(p):
+    """Минимальная версия аптеки для админ-списка — без проектов/месяцев/полного дашборда."""
+    d = p.get('dashboard') or {}
+    totals = d.get('totals') or {}
+    bonuses = d.get('bonuses') or {}
+    accrued = bonuses.get('accrued') or {}
+    return {
+        'id': p['id'],
+        'inn': p['inn'],
+        'name': p['name'],
+        'business': p['business'],
+        'dashboard': {
+            # Только поля, которые читает renderAdminList / renderAdminMgrList:
+            'manager': d.get('manager'),
+            'category': d.get('category'),
+            'region': d.get('region'),
+            'district': d.get('district'),
+            'totals': {
+                'quarter_percent': totals.get('quarter_percent'),
+                'total_bonus': totals.get('total_bonus'),
+                'total_bonus_raw': totals.get('total_bonus_raw'),
+            },
+            'bonuses': {
+                'accrued': {'amount': accrued.get('amount')},
+            },
+            'stats': d.get('stats'),
+        },
+    }
 
 
 def _aggregate_managers(pharm_dicts):
@@ -182,6 +220,59 @@ def _aggregate_managers(pharm_dicts):
 
 async def handle_health(request: web.Request):
     return web.json_response({'ok': True})
+
+
+async def handle_pharmacy_full(request: web.Request):
+    """
+    Возвращает полные данные одной аптеки по ИНН.
+    Доступ:
+      - админ/суперадмин — любую аптеку
+      - обычный юзер — только свою (по owner_tg_id)
+    """
+    tg_id, _ = await resolve_tg_id(request)
+    if not tg_id:
+        return web.json_response({'error': 'unauthorized'}, status=401)
+
+    user = await get_user_data(tg_id)
+    if not user or user['role'] == 'ghost':
+        return web.json_response({'error': 'access_denied'}, status=403)
+
+    inn = request.match_info.get('inn', '').strip()
+    if not inn:
+        return web.json_response({'error': 'no_inn'}, status=400)
+
+    is_admin = user['role'] in ('admin', 'superadmin')
+
+    # Берём всю аптеку с проверкой доступа
+    import asyncpg  # уже импортирован выше через database, но безопасно
+    from database import get_connection
+    conn = await get_connection()
+    try:
+        row = await conn.fetchrow('SELECT * FROM pharmacies WHERE inn = $1', inn)
+    finally:
+        await conn.close()
+
+    if not row:
+        return web.json_response({'error': 'not_found'}, status=404)
+
+    # Обычный юзер может смотреть только свою аптеку
+    if not is_admin and row['owner_tg_id'] != tg_id:
+        return web.json_response({'error': 'forbidden'}, status=403)
+
+    def _parse(value):
+        if value is None: return {}
+        if isinstance(value, str):
+            try: return json.loads(value)
+            except json.JSONDecodeError: return {}
+        return value
+
+    return web.json_response({
+        'id': row['id'],
+        'inn': row['inn'],
+        'name': row['pharmacy_name'],
+        'business': row['business_name'],
+        'dashboard': _parse(row['dashboard_data']),
+    })
 
 
 # Whitelist допустимых типов событий — чтобы фронт не флудил произвольным мусором
@@ -296,6 +387,7 @@ def create_app() -> web.Application:
     # API эндпоинты
     app.router.add_get('/api/me', handle_me)
     app.router.add_get('/api/health', handle_health)
+    app.router.add_get('/api/pharmacy/{inn}', handle_pharmacy_full)
     app.router.add_post('/api/events', handle_events)
     app.router.add_get('/api/admin/stats', handle_admin_stats)
 

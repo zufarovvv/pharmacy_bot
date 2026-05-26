@@ -115,6 +115,7 @@ const LANG = {
     pharmManager: 'Менеджер:',
     pharmPartner: '✓ Партнёр DATFO',
     pctLabel: 'квартал',
+    loaderHint: 'Загружаем данные...',
     promoEyebrow: 'УПУЩЕННАЯ ВЫГОДА',
     promoCtaText: 'Связаться с менеджером',
     promoSkip: 'Не сейчас',
@@ -264,6 +265,7 @@ const LANG = {
     pharmManager: 'Menejer:',
     pharmPartner: '✓ DATFO sherigi',
     pctLabel: 'chorak',
+    loaderHint: 'Yuklanmoqda...',
     promoEyebrow: 'BOY BERILGAN FOYDA',
     promoCtaText: "Menejer bilan bog'lanish",
     promoSkip: 'Hozir emas',
@@ -407,11 +409,13 @@ async function loadUserData() {
     });
     if (!res.ok) {
       const txt = await res.text();
+      hideAppLoader();
       renderError(`API ${res.status}: ${txt}`);
       return;
     }
     userData = await res.json();
     window.userData = userData;
+    hideAppLoader();
     trackEvent('app_open', {
       role: userData.role,
       is_admin: !!userData.is_admin,
@@ -429,7 +433,16 @@ async function loadUserData() {
     render(userData);
   } catch (e) {
     console.error('[app.js] fetch failed:', e);
+    hideAppLoader();
     renderError(t('errLoad') + e.message);
+  }
+}
+
+function hideAppLoader() {
+  const loader = document.getElementById('appLoader');
+  if (loader) {
+    loader.classList.add('hide');
+    setTimeout(() => { loader.style.display = 'none'; }, 300);
   }
 }
 
@@ -549,13 +562,66 @@ function showDashboardView(fromAdmin) {
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
-window.selectPharmacy = function(inn) {
-  const pharm = adminPharmacies.find(p => String(p.inn) === String(inn));
-  if (!pharm) return;
+// Кэш полных данных по ИНН — чтобы не дёргать API повторно если уже открывали
+const pharmacyFullCache = {};
+
+window.selectPharmacy = async function(inn) {
+  const slim = adminPharmacies.find(p => String(p.inn) === String(inn));
+  if (!slim) return;
   trackEvent('pharmacy_open', { inn });
-  renderDashboard(pharm);
-  showDashboardView(true);
+
+  // Если у slim уже есть полные данные (для обычного юзера) — используем напрямую
+  const slimD = slim.dashboard || {};
+  if (Array.isArray(slimD.projects)) {
+    renderDashboard(slim);
+    showDashboardView(true);
+    return;
+  }
+
+  // Из кэша
+  if (pharmacyFullCache[inn]) {
+    renderDashboard(pharmacyFullCache[inn]);
+    showDashboardView(true);
+    return;
+  }
+
+  // Догружаем полные данные через отдельный эндпоинт
+  showDashboardView(true);  // показываем экран с лоадер-стейтом
+  showAppLoaderOverlay();   // короткий лоадер пока тянем
+  try {
+    const initData = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || '';
+    const urlParams = new URLSearchParams(window.location.search);
+    const tgIdFromUrl = urlParams.get('tg_id');
+    const url = new URL(API_BASE + '/api/pharmacy/' + encodeURIComponent(inn));
+    if (initData) url.searchParams.set('init_data', initData);
+    else if (tgIdFromUrl) url.searchParams.set('tg_id', tgIdFromUrl);
+
+    const res = await fetch(url, {
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+        ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
+      },
+    });
+    if (!res.ok) throw new Error('API ' + res.status);
+    const full = await res.json();
+    pharmacyFullCache[inn] = full;
+    renderDashboard(full);
+  } catch (e) {
+    console.error('[app.js] pharmacy full fetch failed:', e);
+    // Фолбэк: показываем slim-версию (что-то покажется, без полных данных)
+    renderDashboard(slim);
+  } finally {
+    hideAppLoader();
+  }
 };
+
+function showAppLoaderOverlay() {
+  const loader = document.getElementById('appLoader');
+  if (loader) {
+    loader.style.display = '';
+    loader.classList.remove('hide');
+  }
+}
 
 window.backToList = function() {
   showAdminList();
