@@ -323,6 +323,7 @@ async def _apply_dashboard_updates(by_inn, source_label='DASH'):
     ok = 0
     skipped_no_tg = []
     errors = []
+    per_pharm = {}  # inn -> {'name', 'tg_id'} для успешно обновлённых
     for inn, data in by_inn.items():
         if not data.get('tg_id'):
             skipped_no_tg.append({'inn': inn, 'name': data.get('name') or ''})
@@ -337,6 +338,7 @@ async def _apply_dashboard_updates(by_inn, source_label='DASH'):
                 dashboard_data=data,
             )
             ok += 1
+            per_pharm[inn] = {'name': data.get('name') or inn, 'tg_id': data['tg_id']}
         except Exception as e:
             errors.append({'inn': inn, 'error': str(e)})
             print(f"❌ [{source_label}] inn={inn}: {e}")
@@ -349,6 +351,7 @@ async def _apply_dashboard_updates(by_inn, source_label='DASH'):
         'updated': ok,
         'skipped_no_tg': skipped_no_tg,
         'errors': errors,
+        'per_pharm': per_pharm,
     }
 
 
@@ -377,18 +380,39 @@ async def sync_dashboard():
 # Менеджер шлёт файл в бот → bot.py качает → вызывает эту функцию.
 # Формат листов — тот же что в Google Sheets («Свод таб»).
 # ============================================================
+# Имя листа, который менеджер обновляет вручную (меняя ИНН в C4).
+# Только он считается источником истины при загрузке xlsx.
+PRIMARY_SHEET_NAME = 'Свод таб new'
+
+
+def _read_sheet_rows(ws):
+    """Читает первые 50×21 ячеек листа в 2D-список значений."""
+    raw = []
+    for row in ws.iter_rows(min_row=1, max_row=50, min_col=1, max_col=21, values_only=True):
+        raw.append(list(row))
+    return raw
+
+
 def _read_all_sheets_from_excel(file_path):
-    """Читает все листы из .xlsx тем же способом что _read_all_sheets читает Google Sheets."""
+    """
+    Парсит .xlsx. Стратегия:
+      1) Если есть лист с именем PRIMARY_SHEET_NAME ("Свод таб new") — берём ТОЛЬКО его.
+         Это рабочий лист менеджера: он вписывает ИНН в C4, формулы подтягивают
+         данные конкретной аптеки. Один upload = одна аптека.
+      2) Иначе fallback: пробуем все листы (старое поведение).
+    """
     from openpyxl import load_workbook
 
     # data_only=True — берём вычисленные значения формул, а не сами формулы
     wb = load_workbook(file_path, data_only=True, read_only=True)
     results = {}
-    for ws in wb.worksheets:
+
+    primary_ws = next((ws for ws in wb.worksheets if ws.title == PRIMARY_SHEET_NAME), None)
+    targets = [primary_ws] if primary_ws else list(wb.worksheets)
+
+    for ws in targets:
         try:
-            raw = []
-            for row in ws.iter_rows(min_row=1, max_row=50, min_col=1, max_col=21, values_only=True):
-                raw.append(list(row))
+            raw = _read_sheet_rows(ws)
         except Exception as e:
             print(f"⚠️ [XLSX] лист {ws.title!r}: ошибка чтения {e}")
             continue
@@ -397,6 +421,7 @@ def _read_all_sheets_from_excel(file_path):
         if data:
             results[data['inn']] = data
             print(f"  ✓ {ws.title!r}: ИНН={data['inn']} ({len(data['projects'])} проектов)")
+
     wb.close()
     return results
 

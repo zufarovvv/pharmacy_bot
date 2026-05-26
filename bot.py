@@ -92,6 +92,7 @@ TEXTS = {
         'upload_excel_processing': "⏳ Парсю Excel и обновляю аптеки...",
         'upload_excel_bad_ext': "❌ Это не .xlsx файл.",
         'upload_excel_too_big': "❌ Файл слишком большой (максимум 20 МБ).",
+        'pharm_notify_msg': "📊 Ваши данные обновлены. Откройте приложение, чтобы посмотреть свежую статистику:",
     },
     'uz': {
         'welcome': "Xush kelibsiz!",
@@ -142,6 +143,7 @@ TEXTS = {
         'upload_excel_processing': "⏳ Excel tahlil qilinmoqda va dorixonalar yangilanmoqda...",
         'upload_excel_bad_ext': "❌ Bu .xlsx fayl emas.",
         'upload_excel_too_big': "❌ Fayl juda katta (maksimal 20 MB).",
+        'pharm_notify_msg': "📊 Ma'lumotlaringiz yangilandi. Yangi statistikani ko'rish uchun ilovani oching:",
     }
 }
 
@@ -1109,9 +1111,45 @@ async def upload_dashboard_excel_recv(message: types.Message, state: FSMContext)
         if os.path.exists(file_path):
             os.remove(file_path)
 
-    # Формируем отчёт
+    # Формируем отчёт + опционально шлём уведомление владельцу аптеки
+    notified_tg_ids = []
+    notify_failed = []
     if result.get('error'):
         text = f"❌ Ошибка: {result['error']}"
+    elif result.get('updated') == 1:
+        # Самый частый случай: менеджер обновил одну аптеку через лист "Свод таб new"
+        per_pharm = result.get('per_pharm') or {}
+        inn = next(iter(per_pharm), None)
+        info = per_pharm.get(inn, {}) if inn else {}
+        name = info.get('name') or '—'
+        tg_id = info.get('tg_id')
+        notify_line = ""
+        if tg_id and WEB_APP_URL:
+            # Бот сам пингует владельца аптеки
+            owner = await get_user_data(tg_id)
+            owner_lang = (owner['language'] if owner else 'ru')
+            try:
+                await bot.send_message(
+                    tg_id,
+                    TEXTS[owner_lang]['pharm_notify_msg'],
+                    reply_markup=kb_webapp(tg_id, owner_lang),
+                )
+                notified_tg_ids.append(tg_id)
+                notify_line = f"\n📨 Уведомление отправлено владельцу (tg_id: <code>{tg_id}</code>)."
+            except Exception as e:
+                notify_failed.append({'tg_id': tg_id, 'error': str(e)})
+                notify_line = f"\n⚠️ Не смог уведомить владельца ({tg_id}): {e}"
+        elif tg_id and not WEB_APP_URL:
+            notify_line = "\n⚠️ WEB_APP_URL не задан в .env — уведомление не отправлено."
+        else:
+            notify_line = "\n⚠️ У аптеки нет TG_ID — уведомить вручную."
+
+        text = (
+            f"✅ Обновлена аптека:\n"
+            f"<b>{name}</b>\n"
+            f"ИНН: <code>{inn}</code>"
+            f"{notify_line}"
+        )
     else:
         text = (
             f"✅ Обновлено: <b>{result['updated']}</b> из {result['total_sheets']} листов\n"
@@ -1126,7 +1164,11 @@ async def upload_dashboard_excel_recv(message: types.Message, state: FSMContext)
             preview = "; ".join(f"{e['inn']}: {e['error']}" for e in errors[:3])
             text += f"\n❌ Ошибок: {len(errors)}\n{preview}"
 
-    await status_msg.edit_text(text, parse_mode='HTML')
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
+    await message.answer(text, parse_mode='HTML')
     await state.clear()
     await cmd_start(message, state)
 
