@@ -92,23 +92,89 @@ async def handle_me(request: web.Request):
                 return {}
         return value
 
+    pharm_dicts = [
+        {
+            'id': p['id'],
+            'inn': p['inn'],
+            'name': p['pharmacy_name'],
+            'business': p['business_name'],
+            'dashboard': _parse_dashboard(p.get('dashboard_data')),
+        }
+        for p in pharmacies
+    ]
+
+    # Для админов считаем сводку по менеджерам — для контроля их работы.
+    managers = _aggregate_managers(pharm_dicts) if is_admin else None
+
     return web.json_response({
         'tg_id': tg_id,
         'auth_source': source,
         'role': user['role'],
         'is_admin': is_admin,
         'language': user['language'],
-        'pharmacies': [
-            {
-                'id': p['id'],
-                'inn': p['inn'],
-                'name': p['pharmacy_name'],
-                'business': p['business_name'],
-                'dashboard': _parse_dashboard(p.get('dashboard_data')),
-            }
-            for p in pharmacies
-        ],
+        'pharmacies': pharm_dicts,
+        'managers': managers,
     })
+
+
+def _aggregate_managers(pharm_dicts):
+    """
+    Группирует аптеки по менеджеру, считает агрегаты:
+      - кол-во аптек у менеджера
+      - средний % квартала
+      - суммарный бонус
+      - разбивка по статусам (completed/partial/critical) — на уровне аптек
+    Сортирует по убыванию числа аптек.
+    """
+    by_mgr = {}
+    for p in pharm_dicts:
+        d = p.get('dashboard') or {}
+        mgr = (d.get('manager') or '').strip() or '—'
+        agg = by_mgr.setdefault(mgr, {
+            'name': mgr,
+            'pharm_count': 0,
+            'pct_sum': 0,
+            'pct_count': 0,
+            'total_bonus_raw': 0,
+            'completed': 0,
+            'partial': 0,
+            'critical': 0,
+        })
+        agg['pharm_count'] += 1
+        totals = d.get('totals') or {}
+        pct = totals.get('quarter_percent')
+        if pct is not None:
+            try:
+                agg['pct_sum'] += float(pct)
+                agg['pct_count'] += 1
+            except (ValueError, TypeError):
+                pass
+        try:
+            agg['total_bonus_raw'] += float(totals.get('total_bonus_raw') or 0)
+        except (ValueError, TypeError):
+            pass
+        # Статус аптеки в целом — по её квартальному %.
+        # Не путать с d['stats'] — там разбивка проектов внутри аптеки.
+        if pct is not None:
+            n = float(pct)
+            if n >= 100: agg['completed'] += 1
+            elif n >= 50: agg['partial'] += 1
+            else: agg['critical'] += 1
+
+    result = []
+    for m in by_mgr.values():
+        avg = round(m['pct_sum'] / m['pct_count']) if m['pct_count'] else None
+        result.append({
+            'name': m['name'],
+            'pharm_count': m['pharm_count'],
+            'avg_pct': avg,
+            'total_bonus_raw': m['total_bonus_raw'],
+            'completed': m['completed'],
+            'partial': m['partial'],
+            'critical': m['critical'],
+        })
+    result.sort(key=lambda m: m['pharm_count'], reverse=True)
+    return result
 
 
 async def handle_health(request: web.Request):
@@ -126,8 +192,24 @@ async def handle_webapp_root(request: web.Request):
     return web.FileResponse(index)
 
 
+@web.middleware
+async def no_cache_middleware(request, handler):
+    """
+    Заставляем Telegram WebApp всегда тянуть свежий index.html / app.js.
+    Без этого правки фронта подтягиваются с задержкой (или не подтягиваются вовсе
+    пока юзер не сделает «Перезагрузить» в Mini App).
+    """
+    response = await handler(request)
+    path = request.path
+    if path == '/' or path.endswith(('.html', '.js', '.css')):
+        response.headers['Cache-Control'] = 'no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
+
 def create_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[no_cache_middleware])
 
     # API эндпоинты
     app.router.add_get('/api/me', handle_me)

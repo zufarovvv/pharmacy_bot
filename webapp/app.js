@@ -10,8 +10,11 @@ let currentSearch = '';
 let currentLang = 'ru';
 // Admin state
 let adminPharmacies = [];
+let adminManagers = [];
 let adminSearch = '';
 let adminFilter = 'all';
+let adminTab = 'pharms'; // 'pharms' | 'managers'
+let adminMgrFilter = null; // имя менеджера для фильтра аптек
 
 // ============================================================
 // LANGUAGE DICTIONARY
@@ -123,6 +126,16 @@ const LANG = {
     adminInn: 'ИНН:',
     adminBonus: 'Бонус:',
     adminNoMgr: 'без менеджера',
+    tabPharms: 'Аптеки',
+    tabManagers: 'Менеджеры',
+    mgrStatTotal: 'Аптек',
+    mgrStatCompleted: 'План',
+    mgrStatPartial: 'Работа',
+    mgrStatCritical: 'Риск',
+    mgrAvgLabel: 'средний %',
+    mgrBonusLabel: 'Общий бонус:',
+    adminMgrSubtitle: '{n} менеджеров',
+    mgrFilterChip: 'Аптеки менеджера: {name}',
   },
   uz: {
     deadline: 'Chorak oxirigacha',
@@ -230,6 +243,16 @@ const LANG = {
     adminInn: 'INN:',
     adminBonus: 'Bonus:',
     adminNoMgr: 'menejersiz',
+    tabPharms: 'Dorixonalar',
+    tabManagers: 'Menejerlar',
+    mgrStatTotal: 'Dorixona',
+    mgrStatCompleted: 'Reja',
+    mgrStatPartial: 'Ishda',
+    mgrStatCritical: 'Xavf',
+    mgrAvgLabel: "o'rtacha %",
+    mgrBonusLabel: 'Umumiy bonus:',
+    adminMgrSubtitle: '{n} menejer',
+    mgrFilterChip: 'Menejer dorixonalari: {name}',
   }
 };
 
@@ -358,8 +381,9 @@ async function loadUserData() {
 // ============================================================
 function render(data) {
   // Admin: show list of all pharmacies first
-  if (data.is_admin && Array.isArray(data.pharmacies) && data.pharmacies.length > 1) {
+  if (data.is_admin && Array.isArray(data.pharmacies) && data.pharmacies.length >= 1) {
     adminPharmacies = data.pharmacies;
+    adminManagers = Array.isArray(data.managers) ? data.managers : [];
     showAdminList();
     return;
   }
@@ -394,8 +418,56 @@ function showAdminList() {
   // Sticky CTA не нужен в списке
   const sticky = document.getElementById('stickyCta');
   if (sticky) sticky.classList.remove('visible');
-  renderAdminList();
+  applyAdminTab();
 }
+
+window.setAdminTab = function(tab) {
+  if (tab !== 'pharms' && tab !== 'managers') return;
+  adminTab = tab;
+  applyAdminTab();
+};
+
+function applyAdminTab() {
+  document.querySelectorAll('.admin-tab').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-tab') === adminTab);
+  });
+  const pharmList = document.getElementById('adminPharmList');
+  const mgrList = document.getElementById('adminMgrList');
+  const filters = document.getElementById('adminFiltersCard');
+  const title = document.getElementById('adminSummaryTitle');
+  const count = document.getElementById('adminCount');
+  if (adminTab === 'managers') {
+    pharmList.style.display = 'none';
+    mgrList.style.display = '';
+    filters.style.display = 'none';
+    title.textContent = t('tabManagers');
+    count.textContent = t('adminMgrSubtitle', { n: adminManagers.length });
+    renderAdminMgrList();
+  } else {
+    pharmList.style.display = '';
+    mgrList.style.display = 'none';
+    filters.style.display = '';
+    title.textContent = t('adminTitle');
+    count.textContent = t('adminSubtitle', { n: adminPharmacies.length });
+    renderAdminList();
+  }
+}
+
+window.clearMgrFilter = function() {
+  adminMgrFilter = null;
+  document.getElementById('adminMgrFilterChip').style.display = 'none';
+  renderAdminList();
+};
+
+window.filterByManager = function(name) {
+  adminMgrFilter = name;
+  adminTab = 'pharms';
+  applyAdminTab();
+  const chip = document.getElementById('adminMgrFilterChip');
+  const txt = document.getElementById('adminMgrFilterText');
+  txt.textContent = t('mgrFilterChip', { name: name });
+  chip.style.display = '';
+};
 
 function showDashboardView(fromAdmin) {
   document.getElementById('adminListView').style.display = 'none';
@@ -417,10 +489,12 @@ window.backToList = function() {
 
 function renderAdminList() {
   const list = document.getElementById('adminPharmList');
-  const countEl = document.getElementById('adminCount');
   if (!list) return;
 
   let filtered = adminPharmacies.slice();
+  if (adminMgrFilter) {
+    filtered = filtered.filter(p => ((p.dashboard || {}).manager || '').trim() === adminMgrFilter);
+  }
   if (adminFilter !== 'all') {
     filtered = filtered.filter(p => statusOf(p) === adminFilter);
   }
@@ -431,8 +505,6 @@ function renderAdminList() {
       return hay.includes(adminSearch);
     });
   }
-
-  if (countEl) countEl.textContent = t('adminSubtitle', { n: adminPharmacies.length });
 
   if (filtered.length === 0) {
     list.innerHTML = `<div class="empty-state" style="margin-top: 8px;"><div class="empty-state-icon">😔</div><div>${t('adminEmpty')}</div></div>`;
@@ -470,6 +542,47 @@ function statusOf(pharm) {
   if (n >= 100) return 'completed';
   if (n >= 50) return 'partial';
   return 'critical';
+}
+
+function renderAdminMgrList() {
+  const list = document.getElementById('adminMgrList');
+  if (!list) return;
+  if (!adminManagers.length) {
+    list.innerHTML = `<div class="empty-state" style="margin-top: 8px;"><div class="empty-state-icon">😔</div><div>${t('adminEmpty')}</div></div>`;
+    return;
+  }
+  list.innerHTML = adminManagers.map(m => {
+    const avg = m.avg_pct;
+    const avgCls = avg == null ? '' : avg >= 100 ? 'pct-success' : avg >= 50 ? 'pct-warning' : 'pct-danger';
+    const avgText = avg == null ? '—' : avg + '%';
+    const nameSafe = escapeHtml(m.name).replace(/'/g, "\\'");
+    return `
+      <div class="mgr-card" onclick="filterByManager('${nameSafe}')">
+        <div class="mgr-card-head">
+          <div class="mgr-card-name">${escapeHtml(m.name)}</div>
+          <div class="mgr-card-avg ${avgCls}">${avgText}</div>
+        </div>
+        <div class="mgr-card-stats">
+          <div class="mgr-stat s-total">
+            <div class="mgr-stat-num">${m.pharm_count}</div>
+            <div class="mgr-stat-label">${t('mgrStatTotal')}</div>
+          </div>
+          <div class="mgr-stat s-completed">
+            <div class="mgr-stat-num">${m.completed}</div>
+            <div class="mgr-stat-label">${t('mgrStatCompleted')}</div>
+          </div>
+          <div class="mgr-stat s-partial">
+            <div class="mgr-stat-num">${m.partial}</div>
+            <div class="mgr-stat-label">${t('mgrStatPartial')}</div>
+          </div>
+          <div class="mgr-stat s-critical">
+            <div class="mgr-stat-num">${m.critical}</div>
+            <div class="mgr-stat-label">${t('mgrStatCritical')}</div>
+          </div>
+        </div>
+        <div class="mgr-card-bonus">${t('mgrBonusLabel')} <b>${formatMoney(m.total_bonus_raw || 0)}</b></div>
+      </div>`;
+  }).join('');
 }
 
 function renderPharmacy(pharm, d) {

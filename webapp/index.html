@@ -465,6 +465,73 @@ body {
   align-self: flex-start;
 }
 .back-to-list:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+/* ===== ADMIN TABS ===== */
+.admin-tabs {
+  display: flex; gap: 4px;
+  background: var(--bg-secondary);
+  border-radius: 10px; padding: 4px;
+  margin: 8px 0;
+}
+.admin-tab {
+  flex: 1;
+  font-family: inherit; font-size: 13px; font-weight: 700;
+  background: transparent; color: var(--text-secondary);
+  border: none; cursor: pointer;
+  padding: 9px 12px; border-radius: 8px;
+  letter-spacing: -0.2px;
+}
+.admin-tab.active { background: var(--surface); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+.mgr-chip {
+  display: inline-flex; align-items: center;
+  background: var(--primary-soft); color: var(--primary-dark);
+  padding: 4px 10px; border-radius: 12px;
+  font-size: 12px; font-weight: 600;
+}
+.mgr-chip-clear {
+  background: var(--primary-soft); color: var(--primary-dark);
+  border: none; cursor: pointer;
+  border-radius: 50%; width: 22px; height: 22px;
+  font-size: 14px; font-weight: 700;
+  margin-left: 4px; vertical-align: middle;
+}
+
+/* ===== MANAGER STAT CARDS ===== */
+.mgr-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-top: 8px;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.15s;
+}
+.mgr-card:active { transform: scale(0.99); }
+.mgr-card:hover { box-shadow: var(--shadow); }
+.mgr-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.mgr-card-name { font-size: 15px; font-weight: 800; color: var(--text-primary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgr-card-avg { font-size: 18px; font-weight: 900; white-space: nowrap; }
+.mgr-card-avg.pct-success { color: var(--success); }
+.mgr-card-avg.pct-warning { color: var(--warning); }
+.mgr-card-avg.pct-danger { color: var(--danger); }
+.mgr-card-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px; margin-top: 12px;
+}
+.mgr-stat {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 8px 6px;
+  text-align: center;
+}
+.mgr-stat-num { font-size: 16px; font-weight: 800; line-height: 1.1; }
+.mgr-stat-label { font-size: 10px; color: var(--text-muted); margin-top: 2px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+.mgr-stat.s-total .mgr-stat-num { color: var(--text-primary); }
+.mgr-stat.s-completed .mgr-stat-num { color: var(--success); }
+.mgr-stat.s-partial .mgr-stat-num { color: var(--warning); }
+.mgr-stat.s-critical .mgr-stat-num { color: var(--danger); }
+.mgr-card-bonus { font-size: 12px; color: var(--text-secondary); margin-top: 10px; }
+.mgr-card-bonus b { color: var(--primary); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -482,14 +549,19 @@ body {
   </div>
 </div>
 
-<!-- ===== ADMIN: LIST OF ALL PHARMACIES ===== -->
+<!-- ===== ADMIN: LIST OF ALL PHARMACIES / MANAGERS ===== -->
 <div class="container" id="adminListView" style="display:none;">
   <section class="card admin-summary">
-    <div class="admin-summary-title" data-i18n="adminTitle">Все аптеки</div>
-    <div class="admin-summary-sub" id="adminCount" data-i18n="adminSubtitle">— аптек в системе</div>
+    <div class="admin-summary-title" id="adminSummaryTitle" data-i18n="adminTitle">Все аптеки</div>
+    <div class="admin-summary-sub" id="adminCount">—</div>
   </section>
 
-  <section class="card" style="padding: 12px;">
+  <div class="admin-tabs">
+    <button class="admin-tab active" data-tab="pharms" onclick="setAdminTab('pharms')" data-i18n="tabPharms">Аптеки</button>
+    <button class="admin-tab" data-tab="managers" onclick="setAdminTab('managers')" data-i18n="tabManagers">Менеджеры</button>
+  </div>
+
+  <section class="card" id="adminFiltersCard" style="padding: 12px;">
     <div class="projects-filters">
       <input type="text" id="adminSearch" class="search-input" data-i18n-placeholder="adminSearchPlaceholder" placeholder="Поиск: аптека / ИНН / менеджер">
       <select id="adminFilter" class="status-select">
@@ -499,9 +571,14 @@ body {
         <option value="critical" data-i18n="filterCritical">Требуют внимания</option>
       </select>
     </div>
+    <div id="adminMgrFilterChip" style="display:none; margin-top: 10px;">
+      <span class="mgr-chip" id="adminMgrFilterText"></span>
+      <button class="mgr-chip-clear" onclick="clearMgrFilter()">×</button>
+    </div>
   </section>
 
   <div id="adminPharmList"></div>
+  <div id="adminMgrList" style="display:none;"></div>
 </div>
 
 <!-- ===== DASHBOARD (per-pharmacy) ===== -->
