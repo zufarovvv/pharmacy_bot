@@ -105,31 +105,26 @@ body {
 }
 
 /* ===== PHARMACY CARD ===== */
-.pharmacy-card { display: flex; gap: 14px; align-items: stretch; }
-.pharmacy-logo {
-  width: 64px; height: 64px;
-  border-radius: var(--radius);
-  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
-  color: white;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 14px;
-  flex-shrink: 0;
-  position: relative;
-}
-.pharmacy-logo::before {
-  content: '+';
-  position: absolute; top: 4px; right: 6px;
-  font-size: 16px; font-weight: 300; line-height: 1;
-  color: rgba(255,255,255,0.4);
-}
+.pharmacy-card { display: flex; gap: 14px; align-items: center; }
 .pharmacy-info { flex: 1; min-width: 0; }
-.pharmacy-name { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
-.pharmacy-meta { font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
-.pharmacy-inn {
-  font-size: 11px; color: var(--text-muted);
-  margin-top: 6px; font-family: monospace;
-}
+.pharmacy-name { font-size: 17px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.2; }
+.pharmacy-meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }
 .pharmacy-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.pharmacy-pct {
+  font-size: 32px; font-weight: 900;
+  letter-spacing: -1px; line-height: 1;
+  flex-shrink: 0;
+  text-align: right;
+}
+.pharmacy-pct-label {
+  font-size: 10px; font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+.pharmacy-pct.pct-success { color: var(--success); }
+.pharmacy-pct.pct-warning { color: var(--warning); }
+.pharmacy-pct.pct-danger { color: var(--danger); }
 .tag {
   font-size: 10px; font-weight: 700;
   background: var(--bg-secondary); color: var(--text-secondary);
@@ -515,19 +510,20 @@ body {
   <button class="back-to-list" id="backToListBtn" onclick="backToList()" style="display:none;" data-i18n="adminBack">← К списку аптек</button>
 
   <section class="card pharmacy-card" id="pharmacyCard">
-    <div class="pharmacy-logo">DATFO</div>
     <div class="pharmacy-info">
       <div class="pharmacy-name" id="pharmName">—</div>
       <div class="pharmacy-meta" id="pharmMeta">—</div>
-      <div class="pharmacy-inn" id="pharmInn">—</div>
       <div class="pharmacy-tags" id="pharmTags"></div>
+    </div>
+    <div>
+      <div class="pharmacy-pct" id="pharmPct">—</div>
+      <div class="pharmacy-pct-label" data-i18n="pctLabel">квартал</div>
     </div>
   </section>
 
   <section class="card hero-earned">
     <div class="hero-earned-label" data-i18n="earnedLabel">Доход за квартал</div>
     <div class="hero-earned-amount" id="incomeAmount">—</div>
-    <div class="hero-earned-sub" id="incomeSub" data-i18n="earnedSub">сум · начислено бонусов</div>
   </section>
 
   <section class="hero-lost" id="heroLost" style="display:none;">
@@ -536,74 +532,58 @@ body {
       <div class="hero-lost-title" data-i18n="lostTitle">Доступно к получению</div>
     </div>
     <div class="hero-lost-amount" id="lostAmount">—</div>
-    <div class="hero-lost-text" id="lostText"></div>
-    <button class="hero-lost-cta" onclick="contactManager()" data-i18n="lostCTA">⚡ ЗАБРАТЬ СВОИ ДЕНЬГИ</button>
-  </section>
-
-  <section class="social-proof" id="socialProof">
-    <div class="social-proof-icon">✦</div>
-    <div class="social-proof-text" id="socialProofText"></div>
+    <button class="hero-lost-cta" onclick="contactManager()" data-i18n="lostCTA">Связаться с менеджером</button>
   </section>
 
   <section class="stats-grid">
     <div class="stat-box stat-completed">
       <div class="stat-number" id="statCompleted">0</div>
-      <div class="stat-label" data-i18n="statsWin">Победы</div>
-      <div class="stat-desc" data-i18n="statsWinDesc">бонус ваш</div>
+      <div class="stat-label" data-i18n="statsWin">Выполнено</div>
     </div>
     <div class="stat-box stat-partial">
       <div class="stat-number" id="statPartial">0</div>
-      <div class="stat-label" data-i18n="statsAlmost">Почти у цели</div>
-      <div class="stat-desc" data-i18n="statsAlmostDesc">ускорьтесь!</div>
+      <div class="stat-label" data-i18n="statsAlmost">В работе</div>
     </div>
     <div class="stat-box stat-critical">
       <div class="stat-number" id="statCritical">0</div>
-      <div class="stat-label" data-i18n="statsRisk">Зона риска</div>
-      <div class="stat-desc" data-i18n="statsRiskDesc">теряете деньги</div>
+      <div class="stat-label" data-i18n="statsRisk">Риск</div>
     </div>
   </section>
 
   <section class="card">
-    <div class="section-title" style="margin: 0 0 4px;" data-i18n="quarterTitle">📊 Прогресс квартала</div>
-    <div class="section-subtitle" style="margin: 0 0 14px;" data-i18n="quarterSub">Чем выше процент — тем больше ваш доход</div>
+    <div class="section-title" style="margin: 0 0 12px;" data-i18n="quarterTitle">Квартал</div>
     <div class="quarter-summary">
       <div class="qs-item">
-        <div class="qs-label" data-i18n="quarterPlan">План квартала</div>
+        <div class="qs-label" data-i18n="quarterPlan">План</div>
         <div class="qs-value" id="qsPlan">—</div>
       </div>
       <div class="qs-item">
-        <div class="qs-label" data-i18n="quarterDone">Уже сделано</div>
+        <div class="qs-label" data-i18n="quarterDone">Факт</div>
         <div class="qs-value" id="qsPercent" style="color: var(--primary);">—</div>
       </div>
     </div>
     <div class="quarter-progress">
       <div class="quarter-progress-fill" id="quarterFill" style="width: 0%;"></div>
     </div>
-    <div class="qs-motivation" id="qsMotivation"></div>
   </section>
 
   <section class="dynamics-card" id="dynamicsCard">
-    <div class="dynamics-title" data-i18n="dynamicsTitle">📈 Ваш доход растёт</div>
-    <div class="dynamics-subtitle" data-i18n="dynamicsSub">Сравните результаты — вы становитесь сильнее каждый месяц</div>
+    <div class="dynamics-title" data-i18n="dynamicsTitle">Динамика</div>
     <div id="dynamicsRows"></div>
-    <div class="dynamics-insight" id="dynamicsInsight"></div>
   </section>
 
   <section>
-    <div class="section-title" data-i18n="monthsTitle">📅 По месяцам</div>
-    <div class="section-subtitle" data-i18n="monthsSub">Каждый закрытый месяц — выплата на счёт</div>
+    <div class="section-title" data-i18n="monthsTitle">По месяцам</div>
     <div class="months-grid" id="monthsGrid"></div>
   </section>
 
   <section>
-    <div class="section-title" data-i18n="bonusTitle">🎁 Ваши бонусы</div>
-    <div class="section-subtitle" data-i18n="bonusSub">Деньги, которые вы получите за работу с проектами</div>
+    <div class="section-title" data-i18n="bonusTitle">Бонусы</div>
     <div class="bonus-grid" id="bonusGrid"></div>
   </section>
 
   <section>
-    <div class="section-title" data-i18n="projectsTitle">📋 Активные проекты</div>
-    <div class="section-subtitle" data-i18n="projectsSub">Нажмите на проект — посмотрите продукцию</div>
+    <div class="section-title" data-i18n="projectsTitle">Проекты</div>
     <div class="card" style="padding: 12px; margin-top: 8px;">
       <div class="projects-filters">
         <input type="text" id="projSearch" class="search-input" data-i18n-placeholder="searchPlaceholder" placeholder="🔍 Найти проект">
@@ -633,9 +613,7 @@ body {
   </section>
 
   <section class="cta-manager">
-    <div class="cta-manager-title" data-i18n="ctaTitle">Хотите увеличить доход?</div>
-    <div class="cta-manager-text" data-i18n="ctaText">Ваш персональный менеджер подскажет, какие проекты дают максимальный бонус.</div>
-    <button class="cta-manager-btn" onclick="contactManager()" data-i18n="ctaBtn">📞 Связаться с менеджером</button>
+    <button class="cta-manager-btn" onclick="contactManager()" data-i18n="ctaBtn">Связаться с менеджером</button>
   </section>
 
   <div class="footer" data-i18n="footer">DATFO · Дашборд аптеки · v5.0</div>

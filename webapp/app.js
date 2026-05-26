@@ -108,6 +108,7 @@ const LANG = {
     pharmInnLabel: 'ИНН:',
     pharmManager: 'Менеджер:',
     pharmPartner: '✓ Партнёр DATFO',
+    pctLabel: 'квартал',
     noPharm: 'У вашего аккаунта нет привязанных аптек. Обратитесь к менеджеру.',
     errLoad: 'Не удалось загрузить данные: ',
     errNoTg: 'Нет tg_id и нет initData. Откройте через бота или добавьте ?tg_id=... в URL.',
@@ -214,6 +215,7 @@ const LANG = {
     pharmInnLabel: 'INN:',
     pharmManager: 'Menejer:',
     pharmPartner: '✓ DATFO sherigi',
+    pctLabel: 'chorak',
     noPharm: "Sizning akkauntingizga dorixona biriktirilmagan. Menejerga murojaat qiling.",
     errLoad: "Ma'lumotlarni yuklab bo'lmadi: ",
     errNoTg: "tg_id va initData yo'q. Bot orqali oching yoki URL ga ?tg_id=... qo'shing.",
@@ -371,7 +373,6 @@ function renderDashboard(pharm) {
   renderPharmacy(pharm, d);
   renderIncome(d);
   renderLostOpportunity(d);
-  renderSocialProof(d);
   renderStats(d.stats);
   renderQuarter(d.totals);
   renderDynamics(d.totals && d.totals.months ? d.totals.months : d.months);
@@ -473,13 +474,26 @@ function statusOf(pharm) {
 
 function renderPharmacy(pharm, d) {
   setText('#pharmName', pharm.business || pharm.name || '—');
+  // Компактная мета: регион · район · ИНН
   const meta = [];
   if (d.region) meta.push(d.region);
   if (d.district) meta.push(d.district);
-  if (d.manager) meta.push(t('pharmManager') + ' ' + d.manager);
+  if (pharm.inn) meta.push('ИНН ' + pharm.inn);
   setText('#pharmMeta', meta.join(' · ') || '—');
-  setText('#pharmInn', t('pharmInnLabel') + ' ' + (pharm.inn || '—'));
 
+  // Большой процент справа
+  const pct = d.totals && d.totals.quarter_percent;
+  const pctEl = document.getElementById('pharmPct');
+  if (pct != null) {
+    const n = Number(pct);
+    pctEl.textContent = n + '%';
+    pctEl.className = 'pharmacy-pct ' + (n >= 100 ? 'pct-success' : n >= 50 ? 'pct-warning' : 'pct-danger');
+  } else {
+    pctEl.textContent = '—';
+    pctEl.className = 'pharmacy-pct';
+  }
+
+  // Тэги: оставляем только категорию (Gold/Silver) — без шумного "Partner"
   const tags = document.getElementById('pharmTags');
   tags.innerHTML = '';
   if (d.category) {
@@ -489,21 +503,11 @@ function renderPharmacy(pharm, d) {
     tag.textContent = '★ ' + d.category;
     tags.appendChild(tag);
   }
-  const lvl = document.createElement('span');
-  lvl.className = 'tag';
-  lvl.style.cssText = 'background: rgba(30,122,52,0.1); color: var(--primary);';
-  lvl.textContent = t('pharmPartner');
-  tags.appendChild(lvl);
 }
 
 function renderIncome(d) {
   const amount = d.income_quarter || (d.totals && d.totals.total_bonus) || '—';
   setText('#incomeAmount', amount);
-  const pct = d.totals && d.totals.quarter_percent;
-  let sub = t('earnedSub');
-  if (pct != null && pct >= 100) sub = t('earnedDone');
-  else if (pct != null && pct >= 80) sub = t('earnedAlmost');
-  setText('#incomeSub', sub);
 }
 
 function renderLostOpportunity(d) {
@@ -516,28 +520,6 @@ function renderLostOpportunity(d) {
   if (lost <= 0) { hero.style.display = 'none'; return; }
   hero.style.display = 'block';
   setText('#lostAmount', formatMoney(lost) + ' ' + (currentLang === 'uz' ? "so'm" : 'сум'));
-
-  const pct = d.totals && d.totals.quarter_percent != null ? Number(d.totals.quarter_percent) : null;
-  const daysLeft = daysToQuarterEnd();
-  let key = 'lostText_high';
-  if (pct != null && pct < 50) key = 'lostText_low';
-  else if (pct != null && pct < 100) key = 'lostText_mid';
-  document.getElementById('lostText').innerHTML = t(key, { pct: pct ?? 0, days: daysLeft });
-}
-
-function renderSocialProof(d) {
-  const sp = document.getElementById('socialProof');
-  const cat = (d.category || '').toLowerCase();
-  const txt = document.getElementById('socialProofText');
-  if (cat === 'gold') {
-    sp.style.display = '';
-    txt.innerHTML = t('spGold');
-  } else if (cat === 'silver') {
-    sp.style.display = '';
-    txt.innerHTML = t('spSilver');
-  } else {
-    sp.style.display = 'none';
-  }
 }
 
 function renderStats(stats) {
@@ -561,15 +543,6 @@ function renderQuarter(totals) {
     else fill.style.background = 'linear-gradient(90deg, var(--primary), var(--success))';
   }
 
-  const days = daysToQuarterEnd();
-  let msg = t('qm_loading');
-  if (pctNum != null) {
-    if (pctNum >= 100) msg = t('qm_done', { pct: pctNum });
-    else if (pctNum >= 80) msg = t('qm_high', { left: 100 - pctNum, remaining: totals.remaining || '—' });
-    else if (pctNum >= 50) msg = t('qm_mid', { days });
-    else msg = t('qm_low', { days });
-  }
-  document.getElementById('qsMotivation').innerHTML = msg;
 }
 
 function renderDynamics(months) {
@@ -606,18 +579,6 @@ function renderDynamics(months) {
   if (allZero) { card.style.display = 'none'; return; }
   card.style.display = '';
 
-  const insight = document.getElementById('dynamicsInsight');
-  const first = data[0].fact, last = data[data.length - 1].fact;
-  if (last > first && first > 0) {
-    const growth = Math.round(((last - first) / first) * 100);
-    insight.innerHTML = t('di_grow', { n: growth });
-  } else if (last > 0 && first > 0 && last < first) {
-    insight.innerHTML = t('di_drop');
-  } else if (data.every(d => d.pct >= 100)) {
-    insight.innerHTML = t('di_top');
-  } else {
-    insight.innerHTML = t('di_stable');
-  }
 }
 
 function renderMonths(months) {
