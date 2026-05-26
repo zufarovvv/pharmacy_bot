@@ -21,7 +21,7 @@ from database import (
     get_pharmacies_by_tg_id, get_user_data, register_user,
     update_user_role, get_all_active_users, upsert_user,
     get_all_pharmacies_extended, create_poll, save_poll_answer,
-    get_poll_list, get_poll_stats_full
+    get_poll_list, get_poll_stats_full, create_tables,
 )
 from screenshot import update_inn_in_sheet, take_screenshot
 from dashboard_sync import sync_dashboard, sync_dashboard_from_excel
@@ -1179,6 +1179,13 @@ async def scheduled_tasks():
 
 async def main():
     print("🤖 Бот запущен (UPDATED: Poll Buttons Stay)!")
+    # Гарантируем что все таблицы существуют (идемпотентно, CREATE IF NOT EXISTS).
+    # Без этого новые таблицы (например, events) появятся только если
+    # суперадмин вручную запустит `python database.py`.
+    try:
+        await create_tables()
+    except Exception as e:
+        print(f"⚠️ create_tables failed: {e}")
     asyncio.create_task(scheduled_tasks())
     api_port = int(os.getenv('API_PORT', '8080'))
     asyncio.create_task(start_api(port=api_port))
