@@ -17,7 +17,7 @@ from aiohttp import web
 import aiohttp_cors
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 
-from database import get_user_data, get_pharmacies_by_tg_id
+from database import get_user_data, get_pharmacies_by_tg_id, get_all_pharmacies_extended
 
 log = logging.getLogger(__name__)
 
@@ -75,7 +75,11 @@ async def handle_me(request: web.Request):
     if user['role'] == 'ghost':
         return web.json_response({'error': 'access_denied', 'tg_id': tg_id}, status=403)
 
-    pharmacies = await get_pharmacies_by_tg_id(tg_id)
+    is_admin = user['role'] in ('admin', 'superadmin')
+    if is_admin:
+        pharmacies = await get_all_pharmacies_extended()
+    else:
+        pharmacies = await get_pharmacies_by_tg_id(tg_id)
 
     def _parse_dashboard(value):
         # asyncpg может вернуть JSONB как dict, так и как str (зависит от типа кодека)
@@ -92,6 +96,7 @@ async def handle_me(request: web.Request):
         'tg_id': tg_id,
         'auth_source': source,
         'role': user['role'],
+        'is_admin': is_admin,
         'language': user['language'],
         'pharmacies': [
             {

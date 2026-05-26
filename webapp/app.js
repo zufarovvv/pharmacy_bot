@@ -8,6 +8,10 @@ let allProjects = [];
 let currentFilter = 'all';
 let currentSearch = '';
 let currentLang = 'ru';
+// Admin state
+let adminPharmacies = [];
+let adminSearch = '';
+let adminFilter = 'all';
 
 // ============================================================
 // LANGUAGE DICTIONARY
@@ -109,6 +113,15 @@ const LANG = {
     errNoTg: 'Нет tg_id и нет initData. Откройте через бота или добавьте ?tg_id=... в URL.',
     errPrefix: '⚠ Ошибка загрузки',
     footer: 'DATFO · Дашборд аптеки · v5.0',
+    adminTitle: 'Все аптеки',
+    adminSubtitle: '{n} аптек в системе',
+    adminSearchPlaceholder: 'Поиск: аптека / ИНН / менеджер',
+    adminBack: '← К списку аптек',
+    adminEmpty: 'По запросу ничего не найдено',
+    adminMgr: 'Менеджер:',
+    adminInn: 'ИНН:',
+    adminBonus: 'Бонус:',
+    adminNoMgr: 'без менеджера',
   },
   uz: {
     deadline: 'Chorak oxirigacha',
@@ -206,6 +219,15 @@ const LANG = {
     errNoTg: "tg_id va initData yo'q. Bot orqali oching yoki URL ga ?tg_id=... qo'shing.",
     errPrefix: "⚠ Yuklash xatosi",
     footer: 'DATFO · Dorixona paneli · v5.0',
+    adminTitle: 'Hamma dorixonalar',
+    adminSubtitle: 'Tizimda {n} ta dorixona',
+    adminSearchPlaceholder: 'Qidirish: dorixona / INN / menejer',
+    adminBack: "← Dorixonalar ro'yxatiga",
+    adminEmpty: "Hech narsa topilmadi",
+    adminMgr: 'Menejer:',
+    adminInn: 'INN:',
+    adminBonus: 'Bonus:',
+    adminNoMgr: 'menejersiz',
   }
 };
 
@@ -272,6 +294,17 @@ async function main() {
     currentFilter = e.target.value;
     renderProjects();
   });
+  // Admin list filters
+  const adminSearchEl = document.getElementById('adminSearch');
+  const adminFilterEl = document.getElementById('adminFilter');
+  if (adminSearchEl) adminSearchEl.addEventListener('input', e => {
+    adminSearch = e.target.value.toLowerCase();
+    renderAdminList();
+  });
+  if (adminFilterEl) adminFilterEl.addEventListener('change', e => {
+    adminFilter = e.target.value;
+    renderAdminList();
+  });
   renderDeadline();
   await loadUserData();
 }
@@ -322,10 +355,19 @@ async function loadUserData() {
 // RENDER
 // ============================================================
 function render(data) {
+  // Admin: show list of all pharmacies first
+  if (data.is_admin && Array.isArray(data.pharmacies) && data.pharmacies.length > 1) {
+    adminPharmacies = data.pharmacies;
+    showAdminList();
+    return;
+  }
   const pharm = (data.pharmacies && data.pharmacies[0]) || null;
   if (!pharm) { renderError(t('noPharm')); return; }
-  const d = pharm.dashboard || {};
+  renderDashboard(pharm);
+}
 
+function renderDashboard(pharm) {
+  const d = pharm.dashboard || {};
   renderPharmacy(pharm, d);
   renderIncome(d);
   renderLostOpportunity(d);
@@ -339,6 +381,94 @@ function render(data) {
   allProjects = Array.isArray(d.projects) ? d.projects : [];
   renderProjects();
   renderStickyCta(d);
+}
+
+// ============================================================
+// ADMIN VIEW
+// ============================================================
+function showAdminList() {
+  document.getElementById('adminListView').style.display = '';
+  document.getElementById('dashboardView').style.display = 'none';
+  document.getElementById('backToListBtn').style.display = 'none';
+  // Sticky CTA не нужен в списке
+  const sticky = document.getElementById('stickyCta');
+  if (sticky) sticky.classList.remove('visible');
+  renderAdminList();
+}
+
+function showDashboardView(fromAdmin) {
+  document.getElementById('adminListView').style.display = 'none';
+  document.getElementById('dashboardView').style.display = '';
+  document.getElementById('backToListBtn').style.display = fromAdmin ? '' : 'none';
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+window.selectPharmacy = function(inn) {
+  const pharm = adminPharmacies.find(p => String(p.inn) === String(inn));
+  if (!pharm) return;
+  renderDashboard(pharm);
+  showDashboardView(true);
+};
+
+window.backToList = function() {
+  showAdminList();
+};
+
+function renderAdminList() {
+  const list = document.getElementById('adminPharmList');
+  const countEl = document.getElementById('adminCount');
+  if (!list) return;
+
+  let filtered = adminPharmacies.slice();
+  if (adminFilter !== 'all') {
+    filtered = filtered.filter(p => statusOf(p) === adminFilter);
+  }
+  if (adminSearch) {
+    filtered = filtered.filter(p => {
+      const d = p.dashboard || {};
+      const hay = `${p.name || ''} ${p.business || ''} ${p.inn || ''} ${d.manager || ''}`.toLowerCase();
+      return hay.includes(adminSearch);
+    });
+  }
+
+  if (countEl) countEl.textContent = t('adminSubtitle', { n: adminPharmacies.length });
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="empty-state" style="margin-top: 8px;"><div class="empty-state-icon">😔</div><div>${t('adminEmpty')}</div></div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(p => {
+    const d = p.dashboard || {};
+    const pct = (d.totals && d.totals.quarter_percent != null) ? Number(d.totals.quarter_percent) : null;
+    const pctCls = pct == null ? '' : pct >= 100 ? 'pct-success' : pct >= 50 ? 'pct-warning' : 'pct-danger';
+    const pctText = pct == null ? '—' : pct + '%';
+    const mgr = (d.manager || '').trim() || t('adminNoMgr');
+    const bonus = (d.totals && d.totals.total_bonus) || (d.bonuses && d.bonuses.accrued && d.bonuses.accrued.amount) || '0';
+    const innSafe = escapeHtml(String(p.inn || ''));
+    const name = p.business || p.name || '—';
+    return `
+      <div class="admin-row" onclick="selectPharmacy('${innSafe}')">
+        <div class="admin-row-head">
+          <div class="admin-row-name">${escapeHtml(name)}</div>
+          <div class="admin-row-pct ${pctCls}">${pctText}</div>
+        </div>
+        <div class="admin-row-meta">
+          <span>${t('adminInn')} <b>${innSafe}</b></span>
+          <span>${t('adminMgr')} <b>${escapeHtml(mgr)}</b></span>
+        </div>
+        <div class="admin-row-bonus">${t('adminBonus')} <b>${escapeHtml(String(bonus))}</b></div>
+      </div>`;
+  }).join('');
+}
+
+function statusOf(pharm) {
+  const pct = pharm.dashboard && pharm.dashboard.totals && pharm.dashboard.totals.quarter_percent;
+  if (pct == null) return 'critical';
+  const n = Number(pct);
+  if (n >= 100) return 'completed';
+  if (n >= 50) return 'partial';
+  return 'critical';
 }
 
 function renderPharmacy(pharm, d) {
@@ -755,7 +885,12 @@ function tourRender() {
 }
 window.addEventListener('resize', () => { if (document.getElementById('tourOverlay').classList.contains('active')) tourRender(); });
 window.addEventListener('load', () => {
-  setTimeout(() => { try { if (!localStorage.getItem('datfo_tour_done')) window.tourShowWelcome(); } catch (e) { window.tourShowWelcome(); } }, 800);
+  setTimeout(() => {
+    try {
+      if (userData && userData.is_admin) return; // admins skip the welcome tour
+      if (!localStorage.getItem('datfo_tour_done')) window.tourShowWelcome();
+    } catch (e) { window.tourShowWelcome(); }
+  }, 800);
 });
 
 // ============================================================

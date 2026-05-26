@@ -429,6 +429,47 @@ body {
 .tour-restart { position: fixed; bottom: 72px; right: 12px; width: 44px; height: 44px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); font-size: 20px; cursor: pointer; z-index: 90; display: flex; align-items: center; justify-content: center; }
 
 .footer { text-align: center; padding: 20px 16px 8px; font-size: 11px; color: var(--text-muted); }
+
+/* ===== ADMIN LIST VIEW ===== */
+.admin-summary { padding: 16px; }
+.admin-summary-title { font-size: 18px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.3px; }
+.admin-summary-sub { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+.admin-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-top: 8px;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.15s;
+}
+.admin-row:active { transform: scale(0.99); }
+.admin-row:hover { box-shadow: var(--shadow); }
+.admin-row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.admin-row-name { font-size: 14px; font-weight: 700; color: var(--text-primary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-row-pct { font-size: 16px; font-weight: 800; white-space: nowrap; }
+.admin-row-pct.pct-success { color: var(--success); }
+.admin-row-pct.pct-warning { color: var(--warning); }
+.admin-row-pct.pct-danger { color: var(--danger); }
+.admin-row-meta { font-size: 12px; color: var(--text-secondary); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.admin-row-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.admin-row-meta b { color: var(--text-primary); font-weight: 600; }
+.admin-row-bonus { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.admin-row-bonus b { color: var(--primary); font-weight: 700; }
+.back-to-list {
+  font-family: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-bottom: 12px;
+  align-self: flex-start;
+}
+.back-to-list:hover { background: var(--bg-secondary); color: var(--text-primary); }
 </style>
 </head>
 <body>
@@ -446,7 +487,32 @@ body {
   </div>
 </div>
 
-<div class="container">
+<!-- ===== ADMIN: LIST OF ALL PHARMACIES ===== -->
+<div class="container" id="adminListView" style="display:none;">
+  <section class="card admin-summary">
+    <div class="admin-summary-title" data-i18n="adminTitle">Все аптеки</div>
+    <div class="admin-summary-sub" id="adminCount" data-i18n="adminSubtitle">— аптек в системе</div>
+  </section>
+
+  <section class="card" style="padding: 12px;">
+    <div class="projects-filters">
+      <input type="text" id="adminSearch" class="search-input" data-i18n-placeholder="adminSearchPlaceholder" placeholder="Поиск: аптека / ИНН / менеджер">
+      <select id="adminFilter" class="status-select">
+        <option value="all" data-i18n="filterAll">Все</option>
+        <option value="completed" data-i18n="filterCompleted">Выполнили</option>
+        <option value="partial" data-i18n="filterPartial">В работе</option>
+        <option value="critical" data-i18n="filterCritical">Требуют внимания</option>
+      </select>
+    </div>
+  </section>
+
+  <div id="adminPharmList"></div>
+</div>
+
+<!-- ===== DASHBOARD (per-pharmacy) ===== -->
+<div class="container" id="dashboardView">
+
+  <button class="back-to-list" id="backToListBtn" onclick="backToList()" style="display:none;" data-i18n="adminBack">← К списку аптек</button>
 
   <section class="card pharmacy-card" id="pharmacyCard">
     <div class="pharmacy-logo">DATFO</div>
