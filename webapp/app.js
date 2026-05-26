@@ -112,6 +112,9 @@ const LANG = {
     pharmManager: 'Менеджер:',
     pharmPartner: '✓ Партнёр DATFO',
     pctLabel: 'квартал',
+    promoEyebrow: 'УПУЩЕННАЯ ВЫГОДА',
+    promoCtaText: 'Связаться с менеджером',
+    promoSkip: 'Не сейчас',
     noPharm: 'У вашего аккаунта нет привязанных аптек. Обратитесь к менеджеру.',
     errLoad: 'Не удалось загрузить данные: ',
     errNoTg: 'Нет tg_id и нет initData. Откройте через бота или добавьте ?tg_id=... в URL.',
@@ -229,6 +232,9 @@ const LANG = {
     pharmManager: 'Menejer:',
     pharmPartner: '✓ DATFO sherigi',
     pctLabel: 'chorak',
+    promoEyebrow: 'BOY BERILGAN FOYDA',
+    promoCtaText: "Menejer bilan bog'lanish",
+    promoSkip: 'Hozir emas',
     noPharm: "Sizning akkauntingizga dorixona biriktirilmagan. Menejerga murojaat qiling.",
     errLoad: "Ma'lumotlarni yuklab bo'lmadi: ",
     errNoTg: "tg_id va initData yo'q. Bot orqali oching yoki URL ga ?tg_id=... qo'shing.",
@@ -395,6 +401,7 @@ function render(data) {
 function renderDashboard(pharm) {
   const d = pharm.dashboard || {};
   renderPharmacy(pharm, d);
+  renderAlertBar(d);
   renderIncome(d);
   renderLostOpportunity(d);
   renderStats(d.stats);
@@ -406,6 +413,7 @@ function renderDashboard(pharm) {
   allProjects = Array.isArray(d.projects) ? d.projects : [];
   renderProjects();
   renderStickyCta(d);
+  schedulePromo(d);
 }
 
 // ============================================================
@@ -621,7 +629,194 @@ function renderPharmacy(pharm, d) {
 function renderIncome(d) {
   const amount = d.income_quarter || (d.totals && d.totals.total_bonus) || '—';
   setText('#incomeAmount', amount);
+
+  // История по месяцам внутри квартала — реальный факт (выручка), что аптека пробила.
+  // Для прошлых кварталов пока показываем "—" — данных нет (нужны от менеджеров).
+  const months = (d.totals && d.totals.months) || d.months || {};
+  const order = [
+    ['january',  t('monthJanShort')],
+    ['february', t('monthFebShort')],
+    ['march',    t('monthMarShort')],
+  ];
+  const root = document.getElementById('incomeHistory');
+  if (root) {
+    root.innerHTML = order.map(([k, label]) => {
+      const m = months[k] || {};
+      const fact = m.fact || '—';
+      const cls = fact === '—' || fact === '0' ? 'muted' : '';
+      return `
+        <div class="income-history-item">
+          <div class="income-history-month">${label}</div>
+          <div class="income-history-val ${cls}">${escapeHtml(fact)}</div>
+        </div>`;
+    }).join('');
+  }
 }
+
+// ============================================================
+// TRIGGER ALERT BAR (топ-плашка)
+// ============================================================
+let currentAlertContext = null; // 'lost' | 'risk' | 'win'
+
+function renderAlertBar(d) {
+  const bar = document.getElementById('alertBar');
+  const icon = document.getElementById('alertBarIcon');
+  const txt = document.getElementById('alertBarText');
+  if (!bar) return;
+
+  const bonuses = d.bonuses || {};
+  const potential = parseMoney((bonuses.potential && bonuses.potential.amount) || '');
+  const accrued = parseMoney((bonuses.accrued && bonuses.accrued.amount) || '');
+  const lost = Math.max(0, potential - accrued);
+
+  const stats = d.stats || {};
+  const critical = stats.critical || 0;
+  const pct = d.totals && d.totals.quarter_percent;
+
+  bar.className = 'alert-bar';
+  if (critical > 0) {
+    bar.classList.add('danger');
+    bar.style.display = '';
+    icon.textContent = '🔴';
+    txt.innerHTML = (currentLang === 'uz'
+      ? `<b>${critical}</b> ta loyiha xavf zonasida — to'g'rilash kerak`
+      : `<b>${critical}</b> ${critical === 1 ? 'проект' : 'проекта'} в зоне риска — нужно срочно действовать`);
+    currentAlertContext = 'risk';
+  } else if (lost > 0) {
+    bar.classList.add('warning');
+    bar.style.display = '';
+    icon.textContent = '⚡';
+    const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
+    txt.innerHTML = (currentLang === 'uz'
+      ? `Boy berilgan foyda: <b>${formatMoney(lost)} ${moneyLabel}</b>`
+      : `Упущено: <b>${formatMoney(lost)} ${moneyLabel}</b> — забрать`);
+    currentAlertContext = 'lost';
+  } else if (pct != null && Number(pct) >= 100) {
+    bar.classList.add('success');
+    bar.style.display = '';
+    icon.textContent = '✓';
+    txt.innerHTML = (currentLang === 'uz'
+      ? `Reja yopildi — chorakni <b>${pct}%</b>ga bajardingiz. Perevypolnenie qo'shimcha bonus beradi.`
+      : `План закрыт — <b>${pct}%</b>. Перевыполнение даёт дополнительный бонус.`);
+    currentAlertContext = 'win';
+  } else {
+    bar.style.display = 'none';
+    currentAlertContext = null;
+  }
+}
+
+window.alertBarClick = function() {
+  // Любой клик по алерту → открываем контакт менеджера
+  // (главная цель алерта — спровоцировать связь с менеджером)
+  contactManager();
+};
+
+// ============================================================
+// PROMO MODAL — большой "рекламный" попап через несколько секунд
+// ============================================================
+let promoScheduled = false;
+
+function schedulePromo(d) {
+  if (promoScheduled) return;
+  promoScheduled = true;
+
+  // Подбираем "тему промо" для этой аптеки.
+  // Приоритет: 1) проект с худшим ВП и ненулевым бонусом 2) общая упущенная выгода 3) ничего.
+  const promo = buildPromoContent(d);
+  if (!promo) return;
+
+  // Показываем 1 раз за сессию Mini App.
+  try {
+    if (sessionStorage.getItem('datfo_promo_shown')) return;
+  } catch (e) {}
+
+  setTimeout(() => showPromo(promo), 3500);
+}
+
+function buildPromoContent(d) {
+  const projects = Array.isArray(d.projects) ? d.projects : [];
+  const bonuses = d.bonuses || {};
+  const potential = parseMoney((bonuses.potential && bonuses.potential.amount) || '');
+  const accrued = parseMoney((bonuses.accrued && bonuses.accrued.amount) || '');
+  const lost = Math.max(0, potential - accrued);
+
+  // Сценарий А: есть конкретный "плохой" проект с ненулевым бонусом — пушим его.
+  const candidates = projects
+    .filter(p => p.percent < 100 && parseMoney(p.bonus_amount || '0') > 0)
+    .sort((a, b) => a.percent - b.percent);
+
+  if (candidates.length > 0) {
+    const worst = candidates[0];
+    const bonusVal = parseMoney(worst.bonus_amount || '0');
+    const factVal = parseMoney(worst.fact || '0');
+    const planVal = parseMoney(worst.quarter_plan || '0');
+    const gap = Math.max(0, planVal - factVal);
+    const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
+
+    if (currentLang === 'uz') {
+      return {
+        icon: '🔥',
+        eyebrow: 'BOY BERILAYOTGAN BONUS',
+        amount: formatMoney(bonusVal) + ' ' + moneyLabel,
+        text: `<b>${escapeHtml(worst.name)}</b> loyihasi atigi <b>${worst.percent}%</b>ga bajarilgan. Yana <b>${formatMoney(gap)} ${moneyLabel}</b>lik buyurtma bersangiz — to'liq bonusni olasiz.`,
+        ctaText: "Menejer bilan bog'lanish",
+      };
+    }
+    return {
+      icon: '🔥',
+      eyebrow: 'УПУЩЕННЫЙ БОНУС',
+      amount: formatMoney(bonusVal) + ' ' + moneyLabel,
+      text: `Проект <b>${escapeHtml(worst.name)}</b> выполнен только на <b>${worst.percent}%</b>. Закажите ещё на <b>${formatMoney(gap)} ${moneyLabel}</b> — и получите полный бонус за этот проект.`,
+      ctaText: 'Связаться с менеджером',
+    };
+  }
+
+  // Сценарий Б: суммарная упущенная выгода без конкретного "плохого" проекта.
+  if (lost > 0) {
+    const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
+    if (currentLang === 'uz') {
+      return {
+        icon: '💰',
+        eyebrow: 'BOY BERILGAN FOYDA',
+        amount: formatMoney(lost) + ' ' + moneyLabel,
+        text: `Chorak oxirigacha bu summani <b>olishingiz mumkin</b>. Menejer sizga ustuvor loyihalarni tanlab beradi.`,
+        ctaText: "Menejer bilan bog'lanish",
+      };
+    }
+    return {
+      icon: '💰',
+      eyebrow: 'УПУЩЕННАЯ ВЫГОДА',
+      amount: formatMoney(lost) + ' ' + moneyLabel,
+      text: `До конца квартала эту сумму <b>ещё можно забрать</b>. Менеджер подскажет, какие проекты приоритетны для вас.`,
+      ctaText: 'Связаться с менеджером',
+    };
+  }
+
+  // Сценарий В: всё ок — промо не нужно.
+  return null;
+}
+
+function showPromo(promo) {
+  const overlay = document.getElementById('promoOverlay');
+  if (!overlay) return;
+  document.getElementById('promoIcon').textContent = promo.icon;
+  document.getElementById('promoEyebrow').textContent = promo.eyebrow;
+  document.getElementById('promoAmount').textContent = promo.amount;
+  document.getElementById('promoText').innerHTML = promo.text;
+  document.getElementById('promoCta').textContent = promo.ctaText;
+  overlay.classList.add('active');
+  try { sessionStorage.setItem('datfo_promo_shown', '1'); } catch (e) {}
+}
+
+window.closePromo = function() {
+  const overlay = document.getElementById('promoOverlay');
+  if (overlay) overlay.classList.remove('active');
+};
+
+window.promoCtaClick = function() {
+  window.closePromo();
+  contactManager();
+};
 
 function renderLostOpportunity(d) {
   const bonuses = d.bonuses || {};
