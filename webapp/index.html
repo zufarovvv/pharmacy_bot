@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>DATFO</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+:root {
+  /* Medical palette — teal/cyan бренд + клинические зелёный/красный/amber */
+  --primary: #0e7490;          /* медицинский teal — бренд */
+  --primary-dark: #155e75;
+  --primary-soft: #cffafe;
+  --primary-bg: #ecfeff;
+  --success: #047857;          /* приглушённый клинический зелёный (emerald-700) */
+  --success-dark: #065f46;
+  --success-soft: #d1fae5;
+  --success-bg: #ecfdf5;
+  --warning: #ca8a04;          /* приглушённый amber */
+  --warning-soft: #fef9c3;
+  --warning-text: #713f12;
+  --danger: #b91c1c;           /* приглушённый клинический красный (red-700) */
+  --danger-dark: #7f1d1d;
+  --danger-soft: #fee2e2;
+  --danger-bg: #fef2f2;
+  --info: #0284c7;             /* медицинский синий */
+  --info-soft: #e0f2fe;
+  --info-text: #0c4a6e;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --bg-primary: #f7fafc;
+  --bg-secondary: #f1f5f9;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --shadow-sm: 0 1px 2px 0 rgba(15,23,42,0.04);
+  --shadow: 0 4px 6px -1px rgba(15,23,42,0.08);
+  --shadow-lg: 0 20px 40px -10px rgba(15,23,42,0.15);
+  --radius: 12px;
+}
+html { -webkit-font-smoothing: antialiased; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.5;
+  padding-bottom: 100px;
+}
+
+/* ===== HEADER ===== */
+.header {
+  position: sticky; top: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  z-index: 100;
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 8px;
+}
+.header-logo { font-size: 18px; font-weight: 900; color: var(--primary); letter-spacing: -0.4px; }
+.header-right { display: flex; align-items: center; gap: 8px; }
+.lang-toggle {
+  display: flex; background: var(--bg-secondary); border-radius: 8px; padding: 2px;
+  border: 1px solid var(--border);
+}
+.lang-btn {
+  font-family: inherit; font-size: 11px; font-weight: 800;
+  padding: 5px 10px; border-radius: 6px; border: none;
+  background: transparent; color: var(--text-secondary);
+  cursor: pointer; letter-spacing: 0.5px;
+}
+.lang-btn.active { background: var(--primary); color: white; box-shadow: var(--shadow-sm); }
+.header-deadline {
+  font-size: 11px; font-weight: 700;
+  background: var(--info-soft);
+  color: var(--info-text);
+  padding: 6px 11px; border-radius: 14px;
+  border: 1px solid #bae6fd;
+  white-space: nowrap;
+}
+.header-deadline .num { font-size: 13px; font-weight: 900; }
+
+/* ===== LAYOUT ===== */
+.container { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.section-title {
+  font-size: 13px; font-weight: 900; color: var(--text-primary);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin: 4px 4px 0 4px;
+}
+.section-subtitle {
+  font-size: 12px; font-weight: 500; color: var(--text-secondary);
+  margin: 2px 4px 0 4px; line-height: 1.4;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ===== PHARMACY CARD ===== */
+.pharmacy-card { display: flex; gap: 14px; align-items: stretch; }
+.pharmacy-logo {
+  width: 64px; height: 64px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 14px;
+  flex-shrink: 0;
+  position: relative;
+}
+.pharmacy-logo::before {
+  content: '+';
+  position: absolute; top: 4px; right: 6px;
+  font-size: 16px; font-weight: 300; line-height: 1;
+  color: rgba(255,255,255,0.4);
+}
+.pharmacy-info { flex: 1; min-width: 0; }
+.pharmacy-name { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
+.pharmacy-meta { font-size: 12px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
+.pharmacy-inn {
+  font-size: 11px; color: var(--text-muted);
+  margin-top: 6px; font-family: monospace;
+}
+.pharmacy-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.tag {
+  font-size: 10px; font-weight: 700;
+  background: var(--bg-secondary); color: var(--text-secondary);
+  padding: 3px 8px; border-radius: 6px;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.tag-gold { background: var(--primary-soft); color: var(--primary-dark); border: 1px solid #a5f3fc; }
+.tag-silver { background: var(--bg-secondary); color: var(--text-secondary); border: 1px solid var(--border); }
+
+/* ===== HERO: УЖЕ ЗАРАБОТАЛИ ===== */
+.hero-earned {
+  background: linear-gradient(135deg, var(--success-bg) 0%, var(--success-soft) 100%);
+  border: 1px solid var(--success-soft);
+  border-radius: 16px;
+  padding: 22px 18px;
+  text-align: center;
+  position: relative; overflow: hidden;
+  box-shadow: 0 8px 20px -10px rgba(4,120,87,0.2);
+}
+.hero-earned::before {
+  content: '+'; position: absolute; top: -20px; right: -10px;
+  width: 100px; height: 100px;
+  color: rgba(4,120,87,0.08);
+  font-size: 130px; font-weight: 900;
+  line-height: 1; text-align: center;
+}
+.hero-earned-label {
+  font-size: 11px; font-weight: 800; color: var(--success-dark);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 4px; position: relative;
+}
+.hero-earned-amount {
+  font-size: 44px; font-weight: 900; color: var(--success-dark);
+  letter-spacing: -1.5px; line-height: 1;
+  position: relative;
+}
+.hero-earned-sub {
+  font-size: 12px; font-weight: 600; color: var(--success-dark);
+  margin-top: 6px; position: relative;
+}
+
+/* ===== HERO: УПУЩЕННАЯ ВЫГОДА ===== */
+.hero-lost {
+  background: var(--surface);
+  border: 1px solid #fde68a;
+  border-left: 4px solid var(--warning);
+  border-radius: 12px;
+  padding: 18px 18px;
+  position: relative; overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.hero-lost::before {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0;
+  width: 80px;
+  background: linear-gradient(90deg, transparent, var(--warning-soft));
+  opacity: 0.5;
+}
+.hero-lost-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; position: relative; }
+.hero-lost-icon {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--warning-soft);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; line-height: 1; color: var(--warning);
+}
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+.hero-lost-title { font-size: 12px; font-weight: 800; color: var(--warning-text); text-transform: uppercase; letter-spacing: 0.4px; }
+.hero-lost-amount { font-size: 36px; font-weight: 900; color: var(--warning); letter-spacing: -1px; line-height: 1; margin-top: 4px; position: relative; }
+.hero-lost-text { font-size: 13px; color: var(--text-secondary); font-weight: 500; margin-top: 10px; line-height: 1.5; position: relative; }
+.hero-lost-cta {
+  display: block; width: 100%; margin-top: 14px;
+  background: var(--primary); color: white;
+  font-family: inherit; font-size: 14px; font-weight: 700;
+  padding: 13px; border-radius: 10px; border: none;
+  cursor: pointer; box-shadow: 0 4px 12px -4px rgba(14,116,144,0.4);
+  letter-spacing: 0.2px; transition: transform 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+.hero-lost-cta:active { transform: scale(0.97); }
+.hero-lost-cta:hover { background: var(--primary-dark); }
+
+/* ===== STATS ===== */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.stat-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 8px; text-align: center; }
+.stat-number { font-size: 32px; font-weight: 900; line-height: 1; letter-spacing: -0.5px; }
+.stat-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-secondary); margin-top: 8px; }
+.stat-desc { font-size: 9px; color: var(--text-muted); margin-top: 3px; font-weight: 500; }
+.stat-completed { background: var(--surface); border-color: var(--success-soft); border-top: 3px solid var(--success); }
+.stat-completed .stat-number { color: var(--success); }
+.stat-partial { background: var(--surface); border-color: #fde68a; border-top: 3px solid var(--warning); }
+.stat-partial .stat-number { color: var(--warning); }
+.stat-critical { background: var(--surface); border-color: var(--danger-soft); border-top: 3px solid var(--danger); }
+.stat-critical .stat-number { color: var(--danger); }
+
+/* ===== QUARTER ===== */
+.quarter-progress { margin-top: 12px; background: var(--bg-secondary); border-radius: 10px; height: 14px; overflow: hidden; position: relative; }
+.quarter-progress-fill { height: 100%; border-radius: 10px; background: linear-gradient(90deg, var(--primary), var(--success)); transition: width 0.6s ease; position: relative; }
+.quarter-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.qs-item { background: var(--bg-secondary); border-radius: 10px; padding: 12px; }
+.qs-label { font-size: 10px; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; }
+.qs-value { font-size: 18px; font-weight: 900; }
+.qs-motivation { background: var(--info-soft); border: 1px solid #bae6fd; border-radius: 10px; padding: 10px 12px; margin-top: 12px; font-size: 12px; color: var(--info-text); font-weight: 500; line-height: 1.5; }
+.qs-motivation b { color: var(--info); font-weight: 700; }
+
+/* ===== ДИНАМИКА ДОХОДОВ ===== */
+.dynamics-card { background: linear-gradient(135deg, #f8fafc, #f1f5f9); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.dynamics-title { font-size: 13px; font-weight: 900; color: var(--text-primary); margin-bottom: 4px; }
+.dynamics-subtitle { font-size: 11px; color: var(--text-secondary); margin-bottom: 14px; }
+.dynamics-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.dynamics-row:last-child { margin-bottom: 0; }
+.dynamics-month { font-size: 11px; font-weight: 800; color: var(--text-secondary); width: 56px; text-transform: uppercase; letter-spacing: 0.3px; }
+.dynamics-bar { flex: 1; height: 22px; background: var(--bg-secondary); border-radius: 6px; overflow: hidden; position: relative; }
+.dynamics-bar-fill { height: 100%; display: flex; align-items: center; padding: 0 8px; font-size: 11px; font-weight: 800; color: white; border-radius: 6px; transition: width 0.6s ease; white-space: nowrap; }
+.dynamics-amount { font-size: 12px; font-weight: 800; color: var(--text-primary); width: 56px; text-align: right; }
+.dynamics-insight { margin-top: 14px; padding: 10px 12px; background: white; border-left: 3px solid var(--primary); border-radius: 8px; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.dynamics-insight b { color: var(--text-primary); font-weight: 800; }
+
+/* ===== MONTHS ===== */
+.months-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.month-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.month-header { background: var(--bg-secondary); padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; }
+.month-body { padding: 12px; }
+.month-row { margin-bottom: 8px; }
+.month-row-label { font-size: 10px; color: var(--text-muted); font-weight: 700; margin-bottom: 2px; }
+.month-row-value { font-size: 13px; font-weight: 800; letter-spacing: -0.3px; }
+.progress-bar { height: 6px; background: var(--bg-secondary); border-radius: 3px; margin: 8px 0 4px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; background: var(--text-muted); }
+.month-percent { font-size: 11px; font-weight: 800; color: var(--text-secondary); }
+
+/* ===== BONUSES ===== */
+.bonus-grid { display: flex; flex-direction: column; gap: 10px; }
+.bonus-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; gap: 12px; align-items: flex-start; position: relative; overflow: hidden; }
+.bonus-card.highlight { border: 1px solid var(--primary); border-left: 4px solid var(--primary); background: var(--primary-bg); box-shadow: 0 4px 12px -6px rgba(14,116,144,0.25); }
+.bonus-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+.bonus-yellow { background: var(--success-soft); color: var(--success); }
+.bonus-blue { background: var(--info-soft); color: var(--info); }
+.bonus-green { background: var(--primary-soft); color: var(--primary); }
+.bonus-content { flex: 1; min-width: 0; }
+.bonus-label { font-size: 10px; font-weight: 900; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; }
+.bonus-amount { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; line-height: 1.1; }
+.bonus-desc { font-size: 11px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4; }
+.bonus-badge { display: inline-block; margin-top: 6px; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: var(--primary); color: white; text-transform: uppercase; letter-spacing: 0.3px; }
+
+/* ===== PROJECTS ===== */
+.projects-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.search-input { flex: 1; min-width: 200px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg-secondary); font-family: inherit; }
+.search-input:focus { outline: none; border-color: var(--primary); background: var(--surface); box-shadow: 0 0 0 3px rgba(30,122,52,0.1); }
+.status-select { padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 13px; background: var(--surface); font-family: inherit; font-weight: 600; cursor: pointer; }
+.projects-table { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.projects-table-head, .project-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 60px 60px 44px 60px; gap: 6px; padding: 10px 12px; align-items: center; }
+.projects-table-head { background: var(--bg-secondary); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2px; color: var(--text-secondary); }
+.project-row { border-top: 1px solid var(--border); font-size: 13px; cursor: pointer; transition: background 0.15s ease; }
+.project-row:hover { background: var(--bg-secondary); }
+.project-row:active { background: var(--bg-primary); }
+.project-name { font-weight: 700; color: var(--text-primary); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-plan { color: var(--text-muted); font-size: 12px; text-align: right; white-space: nowrap; }
+.project-fact { color: var(--text-secondary); font-size: 12px; text-align: right; white-space: nowrap; }
+.project-percent { font-weight: 800; text-align: right; font-size: 13px; white-space: nowrap; }
+.project-bonus { color: var(--text-secondary); text-align: right; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pct-success { color: var(--success); }
+.pct-warning { color: var(--warning); }
+.pct-danger { color: var(--danger); }
+.project-lost { grid-column: 1 / -1; margin-top: 6px; padding: 6px 10px; background: var(--warning-soft); border-left: 3px solid var(--warning); border-radius: 6px; font-size: 11px; color: var(--warning-text); font-weight: 600; }
+
+.empty-state { padding: 32px 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.empty-state-icon { font-size: 40px; margin-bottom: 10px; }
+
+/* ===== CTA MANAGER ===== */
+.cta-manager { background: linear-gradient(135deg, var(--primary-dark), var(--primary)); border-radius: 12px; padding: 22px 20px; color: white; text-align: center; box-shadow: 0 8px 20px -10px rgba(14,116,144,0.35); position: relative; overflow: hidden; }
+.cta-manager::before {
+  content: ''; position: absolute; top: 50%; right: -30px; transform: translateY(-50%);
+  width: 140px; height: 140px; border-radius: 50%;
+  background: rgba(255,255,255,0.07);
+}
+.cta-manager::after {
+  content: '+'; position: absolute; top: 8px; right: 16px;
+  font-size: 36px; font-weight: 300; line-height: 1;
+  color: rgba(255,255,255,0.15);
+}
+.cta-manager-title { font-size: 17px; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 6px; position: relative; }
+.cta-manager-text { font-size: 12px; opacity: 0.9; line-height: 1.5; margin-bottom: 14px; position: relative; }
+.cta-manager-btn { display: inline-block; width: 100%; background: white; color: var(--primary-dark); font-family: inherit; font-size: 14px; font-weight: 700; padding: 13px; border-radius: 10px; border: none; cursor: pointer; position: relative; letter-spacing: 0.2px; transition: transform 0.15s; }
+.cta-manager-btn:active { transform: scale(0.97); }
+
+/* ===== SOCIAL PROOF ===== */
+.social-proof { background: var(--info-soft); border: 1px solid #bae6fd; border-radius: var(--radius); padding: 14px 16px; display: flex; gap: 12px; align-items: center; }
+.social-proof-icon { font-size: 28px; line-height: 1; flex-shrink: 0; color: var(--info); }
+.social-proof-text { font-size: 12px; color: var(--info-text); line-height: 1.5; font-weight: 500; }
+.social-proof-text b { color: var(--info); font-weight: 800; }
+
+/* ===== STICKY CTA ===== */
+.sticky-cta { position: fixed; bottom: 12px; left: 12px; right: 12px; background: var(--primary); color: white; font-family: inherit; font-size: 14px; font-weight: 700; padding: 14px; border-radius: 12px; border: none; cursor: pointer; box-shadow: 0 8px 20px -8px rgba(14,116,144,0.5); z-index: 95; display: none; letter-spacing: 0.2px; }
+.sticky-cta.visible { display: block; animation: slideUp 0.3s ease; }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* ===== MANAGER CONTACT MODAL ===== */
+.mgr-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,0.6);
+  backdrop-filter: blur(4px);
+  z-index: 10001;
+  display: none; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: mgrFadeIn 0.2s ease;
+}
+.mgr-overlay.active { display: flex; }
+@keyframes mgrFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.mgr-card {
+  background: var(--surface);
+  border-radius: 16px;
+  padding: 24px 20px 20px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 25px 60px rgba(15,23,42,0.4);
+  position: relative;
+  animation: mgrSlideUp 0.25s cubic-bezier(0.4,0,0.2,1);
+}
+@keyframes mgrSlideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.mgr-close {
+  position: absolute; top: 10px; right: 12px;
+  width: 30px; height: 30px;
+  background: transparent; border: none;
+  font-size: 24px; font-weight: 400; color: var(--text-muted);
+  cursor: pointer; line-height: 1;
+  border-radius: 50%;
+}
+.mgr-close:hover { background: var(--bg-secondary); color: var(--text-secondary); }
+.mgr-avatar {
+  width: 64px; height: 64px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 16px -4px rgba(14,116,144,0.4);
+}
+.mgr-name { font-size: 18px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.3px; }
+.mgr-role { font-size: 12px; color: var(--text-secondary); margin-top: 4px; font-weight: 500; }
+.mgr-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+.mgr-action {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-family: inherit; font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  width: 100%;
+}
+.mgr-action:hover { background: var(--primary-bg); border-color: var(--primary-soft); }
+.mgr-action:active { transform: scale(0.98); }
+.mgr-action-icon {
+  width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; color: white;
+}
+.mgr-action-icon.phone { background: var(--success); }
+.mgr-action-icon.tg { background: #229ED9; }
+.mgr-action-icon.bot { background: var(--primary); }
+.mgr-action-text { flex: 1; min-width: 0; }
+.mgr-action-label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; }
+.mgr-action-value { font-size: 14px; color: var(--text-primary); font-weight: 700; margin-top: 1px; word-break: break-all; }
+.mgr-action-arrow { color: var(--text-muted); flex-shrink: 0; }
+.mgr-hint {
+  margin-top: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ===== ONBOARDING TOUR ===== */
+.tour-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.72); z-index: 9998; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+.tour-overlay.active { opacity: 1; pointer-events: auto; }
+.tour-spotlight { position: absolute; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(15,23,42,0.72), 0 0 0 4px var(--primary); transition: all 0.35s cubic-bezier(0.4,0,0.2,1); pointer-events: none; background: transparent; }
+.tour-tooltip { position: absolute; background: var(--surface); border-radius: var(--radius); padding: 16px; width: calc(100vw - 32px); max-width: 340px; box-shadow: 0 20px 40px rgba(0,0,0,0.3); z-index: 9999; transition: all 0.35s cubic-bezier(0.4,0,0.2,1); }
+.tour-tooltip-title { font-size: 16px; font-weight: 800; margin-bottom: 6px; letter-spacing: -0.3px; }
+.tour-tooltip-text { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 14px; }
+.tour-tooltip-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tour-progress { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.4px; }
+.tour-buttons { display: flex; gap: 6px; }
+.tour-btn { font-family: inherit; font-size: 12px; font-weight: 700; padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer; }
+.tour-btn-skip { background: transparent; color: var(--text-muted); }
+.tour-btn-prev { background: var(--bg-secondary); color: var(--text-secondary); }
+.tour-btn-next { background: var(--primary); color: white; }
+.tour-welcome { position: fixed; inset: 0; background: rgba(15,23,42,0.72); z-index: 10000; display: none; align-items: center; justify-content: center; padding: 20px; }
+.tour-welcome.active { display: flex; }
+.tour-welcome-card { background: var(--surface); border-radius: 16px; padding: 28px 22px; max-width: 340px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
+.tour-welcome-emoji { font-size: 48px; margin-bottom: 8px; }
+.tour-welcome-title { font-size: 20px; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.4px; }
+.tour-welcome-text { font-size: 14px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px; }
+.tour-welcome-buttons { display: flex; gap: 8px; }
+.tour-welcome-buttons .tour-btn { flex: 1; padding: 12px; font-size: 13px; }
+.tour-restart { position: fixed; bottom: 72px; right: 12px; width: 44px; height: 44px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); font-size: 20px; cursor: pointer; z-index: 90; display: flex; align-items: center; justify-content: center; }
+
+.footer { text-align: center; padding: 20px 16px 8px; font-size: 11px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">DATFO</div>
+  <div class="header-right">
+    <div class="lang-toggle">
+      <button class="lang-btn" data-lang="ru" onclick="setLang('ru')">RU</button>
+      <button class="lang-btn" data-lang="uz" onclick="setLang('uz')">UZ</button>
+    </div>
+    <div class="header-deadline" id="deadlineBadge">
+      ⏳ <span data-i18n="deadline">До конца квартала</span>: <span class="num" id="daysLeft">—</span> <span data-i18n="days">дн.</span>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <section class="card pharmacy-card" id="pharmacyCard">
+    <div class="pharmacy-logo">DATFO</div>
+    <div class="pharmacy-info">
+      <div class="pharmacy-name" id="pharmName">—</div>
+      <div class="pharmacy-meta" id="pharmMeta">—</div>
+      <div class="pharmacy-inn" id="pharmInn">—</div>
+      <div class="pharmacy-tags" id="pharmTags"></div>
+    </div>
+  </section>
+
+  <section class="card hero-earned">
+    <div class="hero-earned-label" data-i18n="earnedLabel">Доход за квартал</div>
+    <div class="hero-earned-amount" id="incomeAmount">—</div>
+    <div class="hero-earned-sub" id="incomeSub" data-i18n="earnedSub">сум · начислено бонусов</div>
+  </section>
+
+  <section class="hero-lost" id="heroLost" style="display:none;">
+    <div class="hero-lost-header">
+      <div class="hero-lost-icon">!</div>
+      <div class="hero-lost-title" data-i18n="lostTitle">Доступно к получению</div>
+    </div>
+    <div class="hero-lost-amount" id="lostAmount">—</div>
+    <div class="hero-lost-text" id="lostText"></div>
+    <button class="hero-lost-cta" onclick="contactManager()" data-i18n="lostCTA">⚡ ЗАБРАТЬ СВОИ ДЕНЬГИ</button>
+  </section>
+
+  <section class="social-proof" id="socialProof">
+    <div class="social-proof-icon">✦</div>
+    <div class="social-proof-text" id="socialProofText"></div>
+  </section>
+
+  <section class="stats-grid">
+    <div class="stat-box stat-completed">
+      <div class="stat-number" id="statCompleted">0</div>
+      <div class="stat-label" data-i18n="statsWin">Победы</div>
+      <div class="stat-desc" data-i18n="statsWinDesc">бонус ваш</div>
+    </div>
+    <div class="stat-box stat-partial">
+      <div class="stat-number" id="statPartial">0</div>
+      <div class="stat-label" data-i18n="statsAlmost">Почти у цели</div>
+      <div class="stat-desc" data-i18n="statsAlmostDesc">ускорьтесь!</div>
+    </div>
+    <div class="stat-box stat-critical">
+      <div class="stat-number" id="statCritical">0</div>
+      <div class="stat-label" data-i18n="statsRisk">Зона риска</div>
+      <div class="stat-desc" data-i18n="statsRiskDesc">теряете деньги</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-title" style="margin: 0 0 4px;" data-i18n="quarterTitle">📊 Прогресс квартала</div>
+    <div class="section-subtitle" style="margin: 0 0 14px;" data-i18n="quarterSub">Чем выше процент — тем больше ваш доход</div>
+    <div class="quarter-summary">
+      <div class="qs-item">
+        <div class="qs-label" data-i18n="quarterPlan">План квартала</div>
+        <div class="qs-value" id="qsPlan">—</div>
+      </div>
+      <div class="qs-item">
+        <div class="qs-label" data-i18n="quarterDone">Уже сделано</div>
+        <div class="qs-value" id="qsPercent" style="color: var(--primary);">—</div>
+      </div>
+    </div>
+    <div class="quarter-progress">
+      <div class="quarter-progress-fill" id="quarterFill" style="width: 0%;"></div>
+    </div>
+    <div class="qs-motivation" id="qsMotivation"></div>
+  </section>
+
+  <section class="dynamics-card" id="dynamicsCard">
+    <div class="dynamics-title" data-i18n="dynamicsTitle">📈 Ваш доход растёт</div>
+    <div class="dynamics-subtitle" data-i18n="dynamicsSub">Сравните результаты — вы становитесь сильнее каждый месяц</div>
+    <div id="dynamicsRows"></div>
+    <div class="dynamics-insight" id="dynamicsInsight"></div>
+  </section>
+
+  <section>
+    <div class="section-title" data-i18n="monthsTitle">📅 По месяцам</div>
+    <div class="section-subtitle" data-i18n="monthsSub">Каждый закрытый месяц — выплата на счёт</div>
+    <div class="months-grid" id="monthsGrid"></div>
+  </section>
+
+  <section>
+    <div class="section-title" data-i18n="bonusTitle">🎁 Ваши бонусы</div>
+    <div class="section-subtitle" data-i18n="bonusSub">Деньги, которые вы получите за работу с проектами</div>
+    <div class="bonus-grid" id="bonusGrid"></div>
+  </section>
+
+  <section>
+    <div class="section-title" data-i18n="projectsTitle">📋 Активные проекты</div>
+    <div class="section-subtitle" data-i18n="projectsSub">Нажмите на проект — посмотрите продукцию</div>
+    <div class="card" style="padding: 12px; margin-top: 8px;">
+      <div class="projects-filters">
+        <input type="text" id="projSearch" class="search-input" data-i18n-placeholder="searchPlaceholder" placeholder="🔍 Найти проект">
+        <select id="projFilter" class="status-select">
+          <option value="all" data-i18n="filterAll">Все</option>
+          <option value="completed" data-i18n="filterCompleted">✅ Победы</option>
+          <option value="partial" data-i18n="filterPartial">⚠️ Ускорить</option>
+          <option value="critical" data-i18n="filterCritical">🔴 Срочно</option>
+        </select>
+      </div>
+    </div>
+    <div class="projects-table" style="margin-top: 8px;">
+      <div class="projects-table-head">
+        <div data-i18n="th_project">Проект</div>
+        <div style="text-align:right;" data-i18n="th_plan">План</div>
+        <div style="text-align:right;" data-i18n="th_fact">Факт</div>
+        <div style="text-align:right;">%</div>
+        <div style="text-align:right;" data-i18n="th_bonus">Бонус</div>
+      </div>
+      <div id="projList">
+        <div class="empty-state">
+          <div class="empty-state-icon">⏳</div>
+          <div data-i18n="loadingProjects">Загрузка проектов...</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-manager">
+    <div class="cta-manager-title" data-i18n="ctaTitle">Хотите увеличить доход?</div>
+    <div class="cta-manager-text" data-i18n="ctaText">Ваш персональный менеджер подскажет, какие проекты дают максимальный бонус.</div>
+    <button class="cta-manager-btn" onclick="contactManager()" data-i18n="ctaBtn">📞 Связаться с менеджером</button>
+  </section>
+
+  <div class="footer" data-i18n="footer">DATFO · Дашборд аптеки · v5.0</div>
+</div>
+
+<button class="sticky-cta" id="stickyCta" onclick="contactManager()">
+  <span id="stickyText">—</span>
+</button>
+
+<!-- ====== MANAGER CONTACT MODAL ====== -->
+<div class="mgr-overlay" id="mgrOverlay" onclick="closeManager(event)">
+  <div class="mgr-card" onclick="event.stopPropagation()">
+    <button class="mgr-close" onclick="closeManager()" aria-label="Close">×</button>
+    <div class="mgr-avatar">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+    </div>
+    <div class="mgr-name" id="mgrName">—</div>
+    <div class="mgr-role" id="mgrRole" data-i18n="mgrRole">Ваш персональный менеджер</div>
+    <div class="mgr-actions" id="mgrActions"></div>
+    <div class="mgr-hint" id="mgrHint" data-i18n="mgrHint">Свяжитесь по телефону или в Telegram — менеджер ответит и поможет с проектами.</div>
+  </div>
+</div>
+
+<!-- ====== ONBOARDING TOUR ====== -->
+<div class="tour-welcome" id="tourWelcome">
+  <div class="tour-welcome-card">
+    <div class="tour-welcome-emoji">👋</div>
+    <div class="tour-welcome-title" data-i18n="welcomeTitle">Добро пожаловать в DATFO!</div>
+    <div class="tour-welcome-text" data-i18n="welcomeText">Покажем за 30 секунд, как зарабатывать больше с DATFO.</div>
+    <div class="tour-welcome-buttons">
+      <button class="tour-btn tour-btn-skip" onclick="tourFinish()" data-i18n="welcomeSkip">Пропустить</button>
+      <button class="tour-btn tour-btn-next" onclick="tourStart()" data-i18n="welcomeStart">Начать →</button>
+    </div>
+  </div>
+</div>
+<div class="tour-overlay" id="tourOverlay">
+  <div class="tour-spotlight" id="tourSpotlight"></div>
+  <div class="tour-tooltip" id="tourTooltip">
+    <div class="tour-tooltip-title" id="tourTitle"></div>
+    <div class="tour-tooltip-text" id="tourText"></div>
+    <div class="tour-tooltip-footer">
+      <div class="tour-progress" id="tourProgress"></div>
+      <div class="tour-buttons">
+        <button class="tour-btn tour-btn-skip" onclick="tourFinish()" data-i18n="tourSkip">Пропустить</button>
+        <button class="tour-btn tour-btn-prev" id="tourPrevBtn" onclick="tourPrev()">←</button>
+        <button class="tour-btn tour-btn-next" id="tourNextBtn" onclick="tourNext()">Далее →</button>
+      </div>
+    </div>
+  </div>
+</div>
+<button class="tour-restart" onclick="tourShowWelcome()" title="?">?</button>
+
+<script src="./app.js"></script>
+</body>
+</html>

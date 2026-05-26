@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.python-version
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets — НИКОГДА не коммитить
+.env
+.env.local
+.env.*.local
+creds.json
+*.pem
+*.key
+
+# Generated artifacts (скриншоты рассылок, Excel-отчёты)
+bc_*.png
+rep_*.png
+final_report.png
+upload_*.xlsx
+unique_report.xlsx
+data_report.xlsx
+list_report.xlsx
+list_*.xlsx
+poll_*.xlsx
+pharmacies_list.xlsx
+
+# Master data (Excel-выгрузки, не нужны в git)
+*.xlsx
+
+# IDE / OS / tooling
+.idea/
+.vscode/
+.claude/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
