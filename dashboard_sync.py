@@ -489,15 +489,30 @@ def _merge_managers(pharmacies_by_inn, mgr_map, source_label='DASH'):
     if not mgr_map:
         return
     matched = 0
+    unmatched = {}  # имя из III-Q → сколько аптек с таким менеджером
     for inn, data in pharmacies_by_inn.items():
-        mgr_name = (data.get('manager') or '').strip().lower()
-        if mgr_name and mgr_name in mgr_map:
+        mgr_name_raw = (data.get('manager') or '').strip()
+        mgr_name = mgr_name_raw.lower()
+        if not mgr_name:
+            continue
+        if mgr_name in mgr_map:
             info = mgr_map[mgr_name]
             if info.get('phone'):    data['manager_phone'] = info['phone']
             if info.get('username'): data['manager_username'] = info['username']
             if info.get('tg_id'):    data['manager_tg_id'] = info['tg_id']
             matched += 1
+        else:
+            unmatched[mgr_name_raw] = unmatched.get(mgr_name_raw, 0) + 1
+
     print(f"  ✓ [{source_label}] Контактов менеджеров подтянуто: {matched}/{len(pharmacies_by_inn)}")
+
+    # Логируем менеджеров, для которых не нашли совпадения в листе 'Менеджеры'
+    if unmatched:
+        top = sorted(unmatched.items(), key=lambda x: -x[1])[:5]
+        print(f"  ⚠️ [{source_label}] Не найдены в листе 'Менеджеры' (топ-5 по числу аптек):")
+        for name, n in top:
+            print(f"      • {name!r}: {n} аптек(и)")
+        print(f"      Имена из 'Менеджеры': {sorted(mgr_map.keys())[:10]}")
 
 
 def _find_iiiq_header_row(rows):

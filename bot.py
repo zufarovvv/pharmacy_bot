@@ -272,6 +272,56 @@ async def get_my_id(message: types.Message):
     await message.answer(f"Ваш chat_id: {message.chat.id}")
 
 
+# --- Диагностика для суперадмина: что в БД по менеджерам / контактам ---
+@dp.message(Command("diag"))
+async def cmd_diag(message: types.Message):
+    user = await get_user_data(message.from_user.id)
+    if not user or user['role'] != 'superadmin':
+        return
+
+    import asyncpg
+    from database import get_connection
+    conn = await get_connection()
+    try:
+        rows = await conn.fetch('''
+            SELECT
+              COALESCE(dashboard_data->>'manager', '—') as manager,
+              COALESCE(NULLIF(dashboard_data->>'manager_username', ''), '—') as username,
+              COALESCE(NULLIF(dashboard_data->>'manager_phone', ''), '—') as phone,
+              COUNT(*) as n
+            FROM pharmacies
+            GROUP BY 1, 2, 3
+            ORDER BY n DESC
+            LIMIT 30
+        ''')
+        total = await conn.fetchval('SELECT COUNT(*) FROM pharmacies')
+        with_un = await conn.fetchval(
+            "SELECT COUNT(*) FROM pharmacies WHERE NULLIF(dashboard_data->>'manager_username','') IS NOT NULL")
+    finally:
+        await conn.close()
+
+    lines = [
+        f"🔍 <b>Диагностика менеджеров</b>",
+        f"Всего аптек: <b>{total}</b>",
+        f"С Telegram-юзернеймом менеджера: <b>{with_un}</b>",
+        f"",
+        f"<b>Сводка (топ-30 уникальных комбинаций):</b>",
+    ]
+    for r in rows:
+        mgr = r['manager']
+        un = r['username']
+        ph = r['phone']
+        n = r['n']
+        tg_mark = '✅' if un != '—' else '❌'
+        lines.append(f"{tg_mark} <code>{mgr}</code> · <i>{un}</i> · {n} апт.")
+
+    text = "\n".join(lines)
+    # Telegram limit ~4096
+    if len(text) > 3900:
+        text = text[:3900] + "\n…(обрезано)"
+    await message.answer(text, parse_mode='HTML')
+
+
 # --- START ---
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
