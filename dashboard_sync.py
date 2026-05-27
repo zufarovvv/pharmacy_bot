@@ -485,11 +485,29 @@ def _parse_managers_sheet(rows):
 
 
 def _merge_managers(pharmacies_by_inn, mgr_map, source_label='DASH'):
-    """Подставляет phone / username / tg_id менеджера в данные аптеки (по имени из III-Q)."""
+    """
+    Подставляет phone / username / tg_id менеджера в данные аптеки (по имени из III-Q).
+
+    Поддерживает FALLBACK-строку: если в листе 'Менеджеры' есть запись с ФИО '*'
+    (или 'default'), её контакты используются для всех аптек, чей менеджер не найден
+    по имени. Удобно для теста: одна строка в Sheets — и все 975 аптек получают
+    рабочую кнопку Telegram, ведущую на тестовый аккаунт.
+    """
     if not mgr_map:
         return
+
+    # Default fallback (специальные имена)
+    default_info = (
+        mgr_map.get('*')
+        or mgr_map.get('default')
+        or mgr_map.get('все')
+        or mgr_map.get('any')
+    )
+
     matched = 0
+    fallback_used = 0
     unmatched = {}  # имя из III-Q → сколько аптек с таким менеджером
+
     for inn, data in pharmacies_by_inn.items():
         mgr_name_raw = (data.get('manager') or '').strip()
         mgr_name = mgr_name_raw.lower()
@@ -501,18 +519,32 @@ def _merge_managers(pharmacies_by_inn, mgr_map, source_label='DASH'):
             if info.get('username'): data['manager_username'] = info['username']
             if info.get('tg_id'):    data['manager_tg_id'] = info['tg_id']
             matched += 1
+        elif default_info:
+            # Точного совпадения нет — используем default из листа 'Менеджеры'.
+            if default_info.get('phone'):    data['manager_phone'] = default_info['phone']
+            if default_info.get('username'): data['manager_username'] = default_info['username']
+            if default_info.get('tg_id'):    data['manager_tg_id'] = default_info['tg_id']
+            fallback_used += 1
         else:
             unmatched[mgr_name_raw] = unmatched.get(mgr_name_raw, 0) + 1
 
-    print(f"  ✓ [{source_label}] Контактов менеджеров подтянуто: {matched}/{len(pharmacies_by_inn)}")
+    total = len(pharmacies_by_inn)
+    msg = f"  ✓ [{source_label}] Контактов менеджеров: точные совпадения {matched}"
+    if default_info:
+        msg += f", по default '*' {fallback_used}"
+    msg += f"  (всего аптек: {total})"
+    print(msg)
 
-    # Логируем менеджеров, для которых не нашли совпадения в листе 'Менеджеры'
+    # Логируем менеджеров, для которых не нашли совпадения в листе 'Менеджеры'.
+    # Это полезно даже с default — видно где надо добавить персональные контакты.
     if unmatched:
         top = sorted(unmatched.items(), key=lambda x: -x[1])[:5]
         print(f"  ⚠️ [{source_label}] Не найдены в листе 'Менеджеры' (топ-5 по числу аптек):")
         for name, n in top:
             print(f"      • {name!r}: {n} аптек(и)")
-        print(f"      Имена из 'Менеджеры': {sorted(mgr_map.keys())[:10]}")
+        if not default_info:
+            print(f"      Имена из 'Менеджеры': {sorted(mgr_map.keys())[:10]}")
+            print(f"      💡 Совет: добавь строку с ФИО='*' — будет fallback на одного менеджера для теста.")
 
 
 def _find_iiiq_header_row(rows):
