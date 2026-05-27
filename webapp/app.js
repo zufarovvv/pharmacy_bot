@@ -4,6 +4,7 @@
 
 const API_BASE = window.location.origin;
 let userData = null;
+let currentPharm = null;     // Полные данные аптеки, чей дашборд сейчас открыт
 let currentPharmInn = null;  // ИНН аптеки, на которую сейчас смотрим (для трекинга)
 let allProjects = [];
 let currentFilter = 'all';
@@ -463,6 +464,7 @@ function render(data) {
 }
 
 function renderDashboard(pharm) {
+  currentPharm = pharm;
   currentPharmInn = pharm.inn || null;
   const d = pharm.dashboard || {};
   renderPharmacy(pharm, d);
@@ -1293,8 +1295,15 @@ function renderDeadline() {
 // CTA: показать модалку контактов менеджера
 window.contactManager = function() {
   trackEvent('contact_manager', {});
-  const d = (window.userData && window.userData.pharmacies && window.userData.pharmacies[0]
-    && window.userData.pharmacies[0].dashboard) || {};
+  // Берём данные той аптеки, чей дашборд сейчас открыт.
+  // Раньше читали userData.pharmacies[0] — это всегда первая аптека из списка,
+  // из-за чего у админа во всех аптеках показывался один и тот же менеджер.
+  let d = (currentPharm && currentPharm.dashboard) || {};
+  if (!d.manager && window.userData && window.userData.pharmacies && window.userData.pharmacies[0]) {
+    // Фолбэк для обычной аптеки: если currentPharm ещё не выставлен (рендер не успел) —
+    // берём первую (и единственную) аптеку пользователя.
+    d = window.userData.pharmacies[0].dashboard || {};
+  }
   const name = d.manager || '';
   const phone = (d.manager_phone || '').trim();
   const username = (d.manager_username || '').trim().replace(/^@/, '');
