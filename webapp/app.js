@@ -158,17 +158,24 @@ const LANG = {
     prodStatActive: 'Активно',
     prodStatTried: 'Пробовали',
     prodStatMissed: 'Упускаете',
-    prodBadgeActive: '✓ Активно беру',
-    prodBadgeTried: '⚡ Пробовал',
-    prodBadgeMissed: '🔥 Упускаете',
-    prodCtaSub: 'бонус за квартал, если начнёте заказывать',
-    prodActiveMeta: 'Заказы: <b>~{n} упак./мес</b> · бонус {amount} {money}/кв',
-    prodTriedMeta: 'Пробовали — стоит вернуть. Потенциал: <b>{amount} {money}/кв</b>',
-    prodFinalCta: 'Связаться с менеджером — забрать {amount} {money}',
+    prodBadgeActive: 'В работе',
+    prodBadgeTried: 'Пробовали',
+    prodBadgeMissed: 'Нет в портфеле',
+    prodCtaSub: 'бонус за квартал при выходе на план',
+    prodActiveMeta: '<b>~{n} уп/мес</b> · бонус {amount} {money}/кв',
+    prodTriedMeta: 'Потенциал к восстановлению: <b>{amount} {money}/кв</b>',
+    prodFinalCta: 'Заказать у менеджера · {amount} {money}',
     prodFinalCtaNeutral: 'Связаться с менеджером',
-    prodPeerMissed: '📍 <b>{buying} из {total}</b> аптек региона уже заказывают — вы отстаёте',
-    prodPeerOccasional: '📈 Лидеры региона берут <b>~{top} упак/мес</b> — у вас {my}',
-    prodPeerActive: '⭐ Вы в <b>топ-{rank}</b> из {region} аптек региона',
+    prodPeerMissed: '<b>{buying} из {total}</b> аптек района продают этот товар — вы упускаете долю рынка',
+    prodPeerOccasional: 'Лидеры района заказывают <b>~{top} уп/мес</b> · вы {my}',
+    prodPeerActive: 'Вы в <b>топ-{rank}</b> из {region} аптек района по этому товару',
+    prodLabelWholesale: 'Закуп',
+    prodLabelRetail: 'Розница',
+    prodLabelMargin: 'Маржа',
+    prodLabelProfit: 'Прибыль с уп.',
+    prodActionAdd: 'Добавить в портфель',
+    prodActionScale: 'Увеличить заказ',
+    prodActionKeep: 'Сохранить темп',
     activityKpiTotal: 'Всего действий',
     activityKpiUsers: 'Активных юзеров',
     activityByType: 'По типам',
@@ -338,17 +345,24 @@ const LANG = {
     prodStatActive: 'Faol',
     prodStatTried: 'Sinab',
     prodStatMissed: 'Boy berasiz',
-    prodBadgeActive: '✓ Faol olaman',
-    prodBadgeTried: '⚡ Sinab',
-    prodBadgeMissed: "🔥 Boy berasiz",
-    prodCtaSub: "Buyurtma boshlasangiz — chorakdagi bonus",
-    prodActiveMeta: "Buyurtmalar: <b>~{n} dona/oy</b> · bonus {amount} {money}/chor",
-    prodTriedMeta: "Sinab ko'rgansiz — qaytarish kerak. Potensial: <b>{amount} {money}/chor</b>",
-    prodFinalCta: "Menejer bilan bog'lanish — {amount} {money} olish",
+    prodBadgeActive: 'Ishda',
+    prodBadgeTried: 'Sinab',
+    prodBadgeMissed: "Portfelda yo'q",
+    prodCtaSub: "Rejaga chiqqanda chorak bonusi",
+    prodActiveMeta: "<b>~{n} dona/oy</b> · bonus {amount} {money}/chor",
+    prodTriedMeta: "Tiklash potensiali: <b>{amount} {money}/chor</b>",
+    prodFinalCta: "Menejerga buyurtma · {amount} {money}",
     prodFinalCtaNeutral: "Menejer bilan bog'lanish",
-    prodPeerMissed: "📍 Hududingizdagi <b>{total} dorixonadan {buying} tasi</b> allaqachon buyurtma qilyapti — siz ortda qolyapsiz",
-    prodPeerOccasional: "📈 Hudud yetakchilari <b>~{top} dona/oy</b> oladi — sizda {my}",
-    prodPeerActive: "⭐ Bu mahsulot bo'yicha <b>{region} dorixonadan top-{rank}</b> dasiz",
+    prodPeerMissed: "Tumandagi <b>{total} dorixonadan {buying} tasi</b> bu mahsulotni sotyapti — siz bozor ulushini boy berasiz",
+    prodPeerOccasional: "Tuman yetakchilari <b>~{top} dona/oy</b> oladi · sizda {my}",
+    prodPeerActive: "Bu mahsulot bo'yicha <b>{region} dorixonadan top-{rank}</b> dasiz",
+    prodLabelWholesale: 'Xarid',
+    prodLabelRetail: 'Chakana',
+    prodLabelMargin: 'Marja',
+    prodLabelProfit: 'Bir donada foyda',
+    prodActionAdd: "Portfelga qo'shish",
+    prodActionScale: 'Buyurtmani oshirish',
+    prodActionKeep: 'Tempi saqlang',
     activityKpiTotal: 'Jami amallar',
     activityKpiUsers: 'Faol foydalanuvchilar',
     activityByType: 'Turlari',
@@ -1610,52 +1624,81 @@ window.openTg = function(username, e) {
 // FAKE PRODUCTS (для демо) — реалистичный набор по проектам.
 // Когда придёт реальная "Продукция" таблица — заменим этот объект на /api/projects/{name}/products.
 // ============================================================
+// Маркетплейс-формат: брэнд (буква + цвет в аватарке), закупочная цена,
+// розница, маржа считается автоматически.
 const FAKE_PRODUCTS = {
   'КРКА': [
-    { id: 'krka-enal',  name: 'Эналаприл', dosage: '10 мг', form: 'таб. №20',  emoji: '💊', price: 12500, monthly_orders_avg: 20, bonus_pct: 7, desc: 'Артериальная гипертензия' },
-    { id: 'krka-noli',  name: 'Нолипрел Би-форте', dosage: '5+1.25 мг', form: 'таб. №30', emoji: '💊', price: 95000, monthly_orders_avg: 12, bonus_pct: 7, desc: 'Эссенциальная гипертензия' },
-    { id: 'krka-zofe',  name: 'Зофеноприл', dosage: '30 мг', form: 'таб. №28', emoji: '💊', price: 78000, monthly_orders_avg: 8,  bonus_pct: 7, desc: 'ИБС, постинфарктное состояние' },
-    { id: 'krka-loza',  name: 'Лозартан', dosage: '50 мг', form: 'таб. №30',  emoji: '💊', price: 38000, monthly_orders_avg: 15, bonus_pct: 7, desc: 'АГ, диабетическая нефропатия' },
-    { id: 'krka-sept',  name: 'Septolete', dosage: '1.2 мг', form: 'паст. №18', emoji: '🍬', price: 22000, monthly_orders_avg: 35, bonus_pct: 7, desc: 'Боль в горле, инфекции полости рта' },
+    { id: 'krka-enal',  name: 'Эналаприл',        dosage: '10 мг',  form: 'таб. №20',  price: 12500, retail: 18000, monthly_orders_avg: 20, bonus_pct: 7 },
+    { id: 'krka-noli',  name: 'Нолипрел Би-форте', dosage: '5+1.25 мг', form: 'таб. №30', price: 95000, retail: 145000, monthly_orders_avg: 12, bonus_pct: 7 },
+    { id: 'krka-zofe',  name: 'Зофеноприл',       dosage: '30 мг',  form: 'таб. №28',  price: 78000, retail: 115000, monthly_orders_avg: 8,  bonus_pct: 7 },
+    { id: 'krka-loza',  name: 'Лозартан',         dosage: '50 мг',  form: 'таб. №30',  price: 38000, retail: 56000, monthly_orders_avg: 15, bonus_pct: 7 },
+    { id: 'krka-sept',  name: 'Septolete',        dosage: '1.2 мг', form: 'паст. №18', price: 22000, retail: 33000, monthly_orders_avg: 35, bonus_pct: 7 },
   ],
   'KUSUM': [
-    { id: 'kus-levo',   name: 'Левомеколь', dosage: '40 г', form: 'мазь',     emoji: '🧴', price: 8200,  monthly_orders_avg: 30, bonus_pct: 3, desc: 'Раны, гнойничковые поражения' },
-    { id: 'kus-deks',   name: 'Декспантенол', dosage: '5%',  form: 'крем 30г', emoji: '🧴', price: 14500, monthly_orders_avg: 22, bonus_pct: 3, desc: 'Регенерация кожи' },
-    { id: 'kus-amox',   name: 'Амоксициллин', dosage: '500 мг', form: 'капс. №20', emoji: '💊', price: 18000, monthly_orders_avg: 18, bonus_pct: 3, desc: 'Бактериальные инфекции' },
-    { id: 'kus-vita',   name: 'Витамин Д3', dosage: '2000 МЕ', form: 'капли 10мл', emoji: '💧', price: 32000, monthly_orders_avg: 25, bonus_pct: 3, desc: 'Дефицит витамина D' },
+    { id: 'kus-levo',   name: 'Левомеколь',       dosage: '40 г',     form: 'мазь',       price: 8200,  retail: 12000, monthly_orders_avg: 30, bonus_pct: 3 },
+    { id: 'kus-deks',   name: 'Декспантенол',     dosage: '5%',       form: 'крем 30г',   price: 14500, retail: 22000, monthly_orders_avg: 22, bonus_pct: 3 },
+    { id: 'kus-amox',   name: 'Амоксициллин',     dosage: '500 мг',   form: 'капс. №20',  price: 18000, retail: 27000, monthly_orders_avg: 18, bonus_pct: 3 },
+    { id: 'kus-vita',   name: 'Витамин Д3',       dosage: '2000 МЕ',  form: 'капли 10мл', price: 32000, retail: 48000, monthly_orders_avg: 25, bonus_pct: 3 },
   ],
   'WELFARM': [
-    { id: 'wel-para',   name: 'Парацетамол', dosage: '500 мг', form: 'таб. №20', emoji: '💊', price: 4500,  monthly_orders_avg: 50, bonus_pct: 7, desc: 'Жаропонижающее, обезболивающее' },
-    { id: 'wel-ibup',   name: 'Ибупрофен', dosage: '400 мг', form: 'таб. №20',  emoji: '💊', price: 7800,  monthly_orders_avg: 40, bonus_pct: 7, desc: 'НПВС, обезболивание' },
-    { id: 'wel-mult',   name: 'Мультивитамин', dosage: 'комплекс', form: 'таб. №60', emoji: '🌿', price: 48000, monthly_orders_avg: 18, bonus_pct: 7, desc: 'Профилактика гиповитаминоза' },
-    { id: 'wel-omeg',   name: 'Омега-3', dosage: '1000 мг', form: 'капс. №60', emoji: '🐟', price: 65000, monthly_orders_avg: 14, bonus_pct: 7, desc: 'ПНЖК, сердечно-сосудистая система' },
+    { id: 'wel-para',   name: 'Парацетамол',      dosage: '500 мг',   form: 'таб. №20',   price: 4500,  retail: 7500,  monthly_orders_avg: 50, bonus_pct: 7 },
+    { id: 'wel-ibup',   name: 'Ибупрофен',        dosage: '400 мг',   form: 'таб. №20',   price: 7800,  retail: 12500, monthly_orders_avg: 40, bonus_pct: 7 },
+    { id: 'wel-mult',   name: 'Мультивитамин',    dosage: 'комплекс', form: 'таб. №60',   price: 48000, retail: 72000, monthly_orders_avg: 18, bonus_pct: 7 },
+    { id: 'wel-omeg',   name: 'Омега-3',          dosage: '1000 мг',  form: 'капс. №60',  price: 65000, retail: 98000, monthly_orders_avg: 14, bonus_pct: 7 },
   ],
   'GETZ PHARMA': [
-    { id: 'getz-azit',  name: 'Азитромицин', dosage: '500 мг', form: 'таб. №3',  emoji: '💊', price: 28000, monthly_orders_avg: 24, bonus_pct: 7, desc: 'Антибиотик широкого спектра' },
-    { id: 'getz-clar',  name: 'Кларитромицин', dosage: '500 мг', form: 'таб. №14', emoji: '💊', price: 56000, monthly_orders_avg: 12, bonus_pct: 7, desc: 'Инфекции дыхательных путей' },
-    { id: 'getz-mela',  name: 'Мелатонин', dosage: '3 мг', form: 'таб. №30',  emoji: '🌙', price: 42000, monthly_orders_avg: 20, bonus_pct: 7, desc: 'Регуляция сна' },
+    { id: 'getz-azit',  name: 'Азитромицин',      dosage: '500 мг',   form: 'таб. №3',    price: 28000, retail: 42000, monthly_orders_avg: 24, bonus_pct: 7 },
+    { id: 'getz-clar',  name: 'Кларитромицин',    dosage: '500 мг',   form: 'таб. №14',   price: 56000, retail: 85000, monthly_orders_avg: 12, bonus_pct: 7 },
+    { id: 'getz-mela',  name: 'Мелатонин',        dosage: '3 мг',     form: 'таб. №30',   price: 42000, retail: 65000, monthly_orders_avg: 20, bonus_pct: 7 },
   ],
   'BAYER': [
-    { id: 'bay-asp',    name: 'Аспирин Кардио', dosage: '100 мг', form: 'таб. №30', emoji: '❤️', price: 35000, monthly_orders_avg: 28, bonus_pct: 7, desc: 'Профилактика тромбозов' },
-    { id: 'bay-can',    name: 'Канестен',  dosage: '1%', form: 'крем 20г',     emoji: '🧴', price: 48000, monthly_orders_avg: 16, bonus_pct: 7, desc: 'Грибковые инфекции кожи' },
-    { id: 'bay-cipro',  name: 'Ципрофлоксацин', dosage: '500 мг', form: 'таб. №10', emoji: '💊', price: 22000, monthly_orders_avg: 22, bonus_pct: 7, desc: 'Бактериальные инфекции' },
+    { id: 'bay-asp',    name: 'Аспирин Кардио',   dosage: '100 мг',   form: 'таб. №30',   price: 35000, retail: 52000, monthly_orders_avg: 28, bonus_pct: 7 },
+    { id: 'bay-can',    name: 'Канестен',         dosage: '1%',       form: 'крем 20г',   price: 48000, retail: 72000, monthly_orders_avg: 16, bonus_pct: 7 },
+    { id: 'bay-cipro',  name: 'Ципрофлоксацин',   dosage: '500 мг',   form: 'таб. №10',   price: 22000, retail: 33000, monthly_orders_avg: 22, bonus_pct: 7 },
   ],
   'FERON': [
-    { id: 'fer-ifn',    name: 'Интерферон', dosage: '500000 МЕ', form: 'свечи №10', emoji: '🛡️', price: 95000, monthly_orders_avg: 15, bonus_pct: 7, desc: 'Иммуномодулятор' },
-    { id: 'fer-anaf',   name: 'Анаферон',  dosage: 'детский', form: 'таб. №20',    emoji: '👶', price: 28000, monthly_orders_avg: 32, bonus_pct: 7, desc: 'Профилактика ОРВИ у детей' },
+    { id: 'fer-ifn',    name: 'Интерферон',       dosage: '500000 МЕ', form: 'свечи №10',  price: 95000, retail: 142000, monthly_orders_avg: 15, bonus_pct: 7 },
+    { id: 'fer-anaf',   name: 'Анаферон',         dosage: 'детский',   form: 'таб. №20',   price: 28000, retail: 42000, monthly_orders_avg: 32, bonus_pct: 7 },
   ],
   'SAFE': [
-    { id: 'safe-glov',  name: 'Перчатки нитриловые', dosage: 'размер M', form: 'уп. 100', emoji: '🧤', price: 75000, monthly_orders_avg: 18, bonus_pct: 7, desc: 'Расходные мед. изделия' },
-    { id: 'safe-mask',  name: 'Маска медицинская', dosage: '3-сл.', form: 'уп. 50', emoji: '😷', price: 22000, monthly_orders_avg: 25, bonus_pct: 7, desc: 'Защита от вирусов' },
+    { id: 'safe-glov',  name: 'Перчатки нитриловые', dosage: 'размер M', form: 'уп. 100', price: 75000, retail: 112000, monthly_orders_avg: 18, bonus_pct: 7 },
+    { id: 'safe-mask',  name: 'Маска медицинская',    dosage: '3-сл.',   form: 'уп. 50',  price: 22000, retail: 33000,  monthly_orders_avg: 25, bonus_pct: 7 },
   ],
 };
 
-// Дефолтный набор для проектов, которых нет в FAKE_PRODUCTS — чтобы экран не был пустой
 const DEFAULT_FAKE_PRODUCTS = [
-  { id: 'gen-1', name: 'Препарат A', dosage: '—', form: 'упак.',  emoji: '💊', price: 25000, monthly_orders_avg: 20, bonus_pct: 7, desc: 'Демо-товар' },
-  { id: 'gen-2', name: 'Препарат B', dosage: '—', form: 'упак.',  emoji: '💊', price: 18000, monthly_orders_avg: 28, bonus_pct: 7, desc: 'Демо-товар' },
-  { id: 'gen-3', name: 'Препарат C', dosage: '—', form: 'упак.',  emoji: '💊', price: 42000, monthly_orders_avg: 14, bonus_pct: 7, desc: 'Демо-товар' },
+  { id: 'gen-1', name: 'Препарат A', dosage: '—', form: 'упак.', price: 25000, retail: 38000, monthly_orders_avg: 20, bonus_pct: 7 },
+  { id: 'gen-2', name: 'Препарат B', dosage: '—', form: 'упак.', price: 18000, retail: 27000, monthly_orders_avg: 28, bonus_pct: 7 },
+  { id: 'gen-3', name: 'Препарат C', dosage: '—', form: 'упак.', price: 42000, retail: 63000, monthly_orders_avg: 14, bonus_pct: 7 },
 ];
+
+// Цвета аватарок брендов (для маркетплейс-стиля). Если бренда нет в карте — slate.
+const BRAND_COLORS = {
+  'КРКА':        '#16a34a', // зелёный — KRKA Slovenia
+  'KUSUM':       '#dc2626',
+  'WELFARM':     '#0891b2',
+  'GETZ PHARMA': '#7c3aed',
+  'BAYER':       '#1e40af',
+  'FERON':       '#ea580c',
+  'SAFE':        '#475569',
+  'SIRIUS':      '#c026d3',
+  'SENTISS':     '#0d9488',
+  'BIOMIND':     '#65a30d',
+  'ZOMMER':      '#b45309',
+  'ASFARMA':     '#0369a1',
+};
+
+function brandColor(name) {
+  return BRAND_COLORS[(name || '').toUpperCase()] || '#0f172a';
+}
+
+function brandLetter(name) {
+  const n = (name || '?').trim();
+  // Если есть пробел/дефис — берём первые буквы 2 слов
+  const parts = n.split(/[\s-]+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return n.substring(0, 2).toUpperCase();
+}
 
 function getFakeProducts(projectName) {
   const upper = (projectName || '').toUpperCase().trim();
@@ -1758,6 +1801,8 @@ function renderProductsOverlay(projectName, products, summary) {
   const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
 
   const sortByPotential = [...products].sort((a, b) => b.potential - a.potential);
+  const brandLetterStr = brandLetter(projectName);
+  const brandClr = brandColor(projectName);
 
   const itemsHtml = sortByPotential.map(p => {
     const statusBadge = (() => {
@@ -1766,10 +1811,33 @@ function renderProductsOverlay(projectName, products, summary) {
       return `<span class="prod-badge missed">${t('prodBadgeMissed')}</span>`;
     })();
 
-    const ctaBlock = p.status === 'missed'
-      ? `<div class="prod-cta-block">
-           <div class="prod-cta-amount">+${formatMoney(p.potential)} ${moneyLabel}</div>
-           <div class="prod-cta-sub">${t('prodCtaSub')}</div>
+    // Маркетплейс-блок: закуп / розница / маржа — главные деловые метрики
+    const margin = Math.round((p.retail - p.price) / p.price * 100);
+    const profitPerUnit = p.retail - p.price;
+
+    const pricingHtml = `
+      <div class="prod-pricing">
+        <div class="prod-price">
+          <div class="prod-price-label">${t('prodLabelWholesale')}</div>
+          <div class="prod-price-val">${formatMoney(p.price)}</div>
+        </div>
+        <div class="prod-price">
+          <div class="prod-price-label">${t('prodLabelRetail')}</div>
+          <div class="prod-price-val">${formatMoney(p.retail)}</div>
+        </div>
+        <div class="prod-price">
+          <div class="prod-price-label">${t('prodLabelMargin')}</div>
+          <div class="prod-price-val accent">+${margin}%</div>
+        </div>
+      </div>
+      <div class="prod-profit-line">
+        ${t('prodLabelProfit')}: <b>${formatMoney(profitPerUnit)} ${moneyLabel}</b>
+      </div>`;
+
+    const opportunityBlock = p.status === 'missed'
+      ? `<div class="prod-opp">
+           <div class="prod-opp-amount">+${formatMoney(p.potential)} ${moneyLabel}</div>
+           <div class="prod-opp-sub">${t('prodCtaSub')}</div>
          </div>`
       : p.status === 'active'
         ? `<div class="prod-meta-line">${t('prodActiveMeta', { n: p.monthlyOrders, amount: formatMoney(p.potential), money: moneyLabel })}</div>`
@@ -1778,19 +1846,26 @@ function renderProductsOverlay(projectName, products, summary) {
     const peerLine = renderPeerLine(p.peer);
     const peerHtml = peerLine ? `<div class="prod-peer ${p.status}">${peerLine}</div>` : '';
 
+    const actionLabel = p.status === 'missed' ? t('prodActionAdd')
+                     : p.status === 'active'  ? t('prodActionKeep')
+                                              : t('prodActionScale');
+    const projectSafe = escapeHtml(projectName).replace(/'/g, "\\'");
+    const actionBtn = `<button class="prod-action ${p.status}" onclick="productCtaClick('${projectSafe}')">${actionLabel}</button>`;
+
     return `
       <div class="prod-card ${p.status}">
         <div class="prod-head">
-          <div class="prod-emoji">${p.emoji}</div>
+          <div class="prod-avatar" style="background: ${brandClr};">${brandLetterStr}</div>
           <div class="prod-title-block">
             <div class="prod-name">${escapeHtml(p.name)} <span class="prod-dosage">${escapeHtml(p.dosage)}</span></div>
-            <div class="prod-meta">${escapeHtml(p.form)} · ${formatMoney(p.price)} ${moneyLabel}/упак</div>
-            <div class="prod-desc">${escapeHtml(p.desc)}</div>
+            <div class="prod-meta">${escapeHtml(projectName)} · ${escapeHtml(p.form)}</div>
           </div>
+          ${statusBadge}
         </div>
-        <div class="prod-status-row">${statusBadge}</div>
-        ${ctaBlock}
+        ${pricingHtml}
+        ${opportunityBlock}
         ${peerHtml}
+        ${actionBtn}
       </div>
     `;
   }).join('');

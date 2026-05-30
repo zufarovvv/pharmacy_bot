@@ -954,24 +954,25 @@ body {
   border-radius: var(--radius);
   padding: 14px;
 }
-.prod-card.active   { border-left: 4px solid var(--success); }
-.prod-card.occasional { border-left: 4px solid var(--warning); }
-.prod-card.missed   { border-left: 4px solid var(--danger); }
+.prod-card.active     { border-top: 3px solid var(--success); }
+.prod-card.occasional { border-top: 3px solid var(--warning); }
+.prod-card.missed     { border-top: 3px solid var(--danger); }
 
-.prod-head { display: flex; gap: 12px; }
-.prod-emoji {
-  font-size: 32px;
-  width: 48px; height: 48px;
+.prod-head { display: flex; gap: 12px; align-items: flex-start; }
+.prod-avatar {
+  width: 44px; height: 44px;
   display: flex; align-items: center; justify-content: center;
-  background: var(--bg-secondary);
-  border-radius: var(--radius);
+  border-radius: 10px;
+  font-weight: 900; font-size: 15px;
+  color: white;
+  letter-spacing: -0.5px;
   flex-shrink: 0;
 }
-.prod-title-block { flex: 1; min-width: 0; }
+.prod-title-block { flex: 1; min-width: 0; padding-top: 1px; }
 .prod-name {
   font-size: 15px; font-weight: 800;
   color: var(--text-primary);
-  letter-spacing: -0.2px;
+  letter-spacing: -0.2px; line-height: 1.2;
 }
 .prod-dosage {
   font-size: 12px; font-weight: 600;
@@ -979,25 +980,96 @@ body {
   margin-left: 4px;
 }
 .prod-meta {
-  font-size: 11px; color: var(--text-muted);
-  margin-top: 2px; font-weight: 600;
+  font-size: 10px; color: var(--text-muted);
+  margin-top: 3px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.4px;
 }
-.prod-desc {
-  font-size: 12px; color: var(--text-secondary);
-  margin-top: 4px;
-  line-height: 1.4;
-}
-.prod-status-row { margin-top: 10px; }
 .prod-badge {
   display: inline-block;
-  font-size: 11px; font-weight: 800;
-  padding: 4px 10px;
+  font-size: 10px; font-weight: 900;
+  padding: 4px 9px;
   border-radius: 6px;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  flex-shrink: 0;
 }
 .prod-badge.active { background: var(--success-soft); color: var(--success-dark); }
 .prod-badge.tried  { background: var(--warning-soft); color: var(--warning-text); }
 .prod-badge.missed { background: var(--danger-soft); color: var(--danger-dark); }
+
+/* Маркетплейс-блок: закуп / розница / маржа */
+.prod-pricing {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  margin-top: 12px;
+  background: var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.prod-price {
+  background: var(--bg-secondary);
+  padding: 10px 6px;
+  text-align: center;
+}
+.prod-price-label {
+  font-size: 9px; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  font-weight: 800;
+}
+.prod-price-val {
+  font-size: 14px; font-weight: 800;
+  color: var(--text-primary);
+  margin-top: 2px;
+  letter-spacing: -0.3px;
+}
+.prod-price-val.accent { color: var(--success); }
+.prod-profit-line {
+  font-size: 11px; color: var(--text-secondary);
+  margin-top: 8px; font-weight: 600;
+  text-align: center;
+}
+.prod-profit-line b { color: var(--text-primary); font-weight: 800; }
+
+/* Возможность (для missed) — деловая, не «паническая» */
+.prod-opp {
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(220,38,38,0.05);
+  border: 1px dashed rgba(220,38,38,0.3);
+  border-radius: 10px;
+  text-align: center;
+}
+.prod-opp-amount {
+  font-size: 18px; font-weight: 900;
+  color: var(--danger-dark);
+  letter-spacing: -0.4px;
+}
+.prod-opp-sub {
+  font-size: 11px; color: var(--danger);
+  margin-top: 2px; font-weight: 600;
+}
+
+/* Marketplace-кнопка действия — цвет по статусу */
+.prod-action {
+  width: 100%;
+  margin-top: 12px;
+  font-family: inherit;
+  font-size: 13px; font-weight: 800;
+  border: none; border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  letter-spacing: -0.2px;
+}
+.prod-action.missed {
+  background: var(--danger); color: white;
+}
+.prod-action.occasional {
+  background: var(--warning); color: white;
+}
+.prod-action.active {
+  background: var(--surface); color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
 
 .prod-cta-block {
   margin-top: 12px;
