@@ -533,6 +533,113 @@ body {
 .mgr-card-bonus { font-size: 12px; color: var(--text-secondary); margin-top: 10px; }
 .mgr-card-bonus b { color: var(--primary); font-weight: 700; }
 
+/* ===== MANAGER DASHBOARD (расширенный вид) ===== */
+.mgr-summary {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin-top: 8px;
+}
+.mgr-summary-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 10px;
+}
+.mgr-summary-label {
+  font-size: 10px; color: var(--text-muted);
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.mgr-summary-num {
+  font-size: 22px; font-weight: 900; margin-top: 4px;
+  color: var(--text-primary); letter-spacing: -0.8px; line-height: 1.1;
+}
+.mgr-summary-sub {
+  font-size: 11px; color: var(--text-secondary);
+  font-weight: 600; margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mgr-summary-num.pct-success { color: var(--success); }
+.mgr-summary-num.pct-warning { color: var(--warning); }
+.mgr-summary-num.pct-danger { color: var(--danger); }
+
+.mgr-sort {
+  display: flex; gap: 6px; align-items: center;
+  margin-top: 12px;
+  font-size: 12px; color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+.mgr-sort-btn {
+  font-family: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px; font-weight: 700;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.mgr-sort-btn.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.mgr-rank {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 26px;
+  border-radius: 50%;
+  font-size: 12px; font-weight: 900;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  margin-right: 8px;
+  padding: 0 6px;
+}
+.mgr-rank.gold   { background: linear-gradient(135deg, #fcd34d, #d97706); color: white; }
+.mgr-rank.silver { background: linear-gradient(135deg, #d1d5db, #6b7280); color: white; }
+.mgr-rank.bronze { background: linear-gradient(135deg, #d97706, #92400e); color: white; }
+
+.mgr-progress {
+  margin-top: 10px;
+  height: 6px;
+  background: var(--bg-secondary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.mgr-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.mgr-stack {
+  display: flex;
+  margin-top: 8px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+.mgr-stack-seg { height: 100%; }
+.mgr-stack-seg.completed { background: var(--success); }
+.mgr-stack-seg.partial   { background: var(--warning); }
+.mgr-stack-seg.critical  { background: var(--danger); }
+.mgr-stack-legend {
+  display: flex; justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px; color: var(--text-muted); font-weight: 600;
+}
+.mgr-stack-legend .leg {
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.mgr-stack-dot {
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+}
+.mgr-stack-dot.completed { background: var(--success); }
+.mgr-stack-dot.partial   { background: var(--warning); }
+.mgr-stack-dot.critical  { background: var(--danger); }
+
+.mgr-card-name-row { display: flex; align-items: center; min-width: 0; flex: 1; }
+.mgr-card-rank-name { display: flex; align-items: center; min-width: 0; }
+
 /* ===== ACTIVITY DASHBOARD ===== */
 .activity-period {
   display: flex; gap: 6px;

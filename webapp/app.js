@@ -19,6 +19,7 @@ let adminTab = 'pharms'; // 'pharms' | 'managers' | 'activity'
 let adminMgrFilter = null; // имя менеджера для фильтра аптек
 let activityPeriodDays = 7;
 let activityCache = null;
+let mgrSort = 'avg_pct'; // 'avg_pct' | 'pharm_count' | 'bonus' | 'completed' | 'critical'
 
 // ============================================================
 // LANGUAGE DICTIONARY
@@ -138,6 +139,18 @@ const LANG = {
     tabManagers: 'Менеджеры',
     tabActivity: 'Активность',
     activitySubtitle: 'за {days} дн.',
+    mgrSumAll: 'Менеджеров',
+    mgrSumAvg: 'Средний %',
+    mgrSumBest: 'Лучший',
+    mgrSortLabel: 'Сортировка:',
+    mgrSortAvg: 'По % плана',
+    mgrSortPharms: 'По аптекам',
+    mgrSortBonus: 'По бонусу',
+    mgrSortCompleted: 'По выполненным',
+    mgrSortCritical: 'По риску',
+    mgrLegCompleted: 'Выполнили',
+    mgrLegPartial: 'В работе',
+    mgrLegCritical: 'Риск',
     activityKpiTotal: 'Всего действий',
     activityKpiUsers: 'Активных юзеров',
     activityByType: 'По типам',
@@ -288,6 +301,18 @@ const LANG = {
     tabManagers: 'Menejerlar',
     tabActivity: 'Faollik',
     activitySubtitle: '{days} kun ichida',
+    mgrSumAll: 'Menejerlar',
+    mgrSumAvg: "O'rtacha %",
+    mgrSumBest: 'Eng yaxshi',
+    mgrSortLabel: 'Saralash:',
+    mgrSortAvg: 'Reja %',
+    mgrSortPharms: 'Dorixonalar soni',
+    mgrSortBonus: 'Bonus',
+    mgrSortCompleted: 'Bajarganlar',
+    mgrSortCritical: 'Xavf',
+    mgrLegCompleted: 'Bajardi',
+    mgrLegPartial: 'Ishda',
+    mgrLegCritical: 'Xavf',
     activityKpiTotal: 'Jami amallar',
     activityKpiUsers: 'Faol foydalanuvchilar',
     activityByType: 'Turlari',
@@ -848,27 +873,119 @@ function renderActivityShell(stats) {
   `;
 }
 
+window.setMgrSort = function(sortKey) {
+  mgrSort = sortKey;
+  renderAdminMgrList();
+};
+
+function sortedManagers() {
+  const arr = adminManagers.slice();
+  const dir = (a, b, key, fallback = -1) => {
+    const av = a[key]; const bv = b[key];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return (bv - av) || ((a.pharm_count || 0) - (b.pharm_count || 0)) * fallback;
+  };
+  switch (mgrSort) {
+    case 'pharm_count': arr.sort((a, b) => (b.pharm_count || 0) - (a.pharm_count || 0)); break;
+    case 'bonus':       arr.sort((a, b) => (b.total_bonus_raw || 0) - (a.total_bonus_raw || 0)); break;
+    case 'completed':   arr.sort((a, b) => (b.completed || 0) - (a.completed || 0)); break;
+    case 'critical':    arr.sort((a, b) => (b.critical || 0) - (a.critical || 0)); break;
+    case 'avg_pct':
+    default:            arr.sort((a, b) => dir(a, b, 'avg_pct'));
+  }
+  return arr;
+}
+
+function rankBadgeClass(rank) {
+  if (rank === 1) return 'gold';
+  if (rank === 2) return 'silver';
+  if (rank === 3) return 'bronze';
+  return '';
+}
+function rankBadgeIcon(rank) {
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return '#' + rank;
+}
+
+function computeMgrSummary() {
+  if (!adminManagers.length) return null;
+  let pctSum = 0, pctN = 0;
+  let best = null;
+  for (const m of adminManagers) {
+    if (m.avg_pct != null) {
+      pctSum += m.avg_pct;
+      pctN += 1;
+      if (!best || (m.avg_pct > (best.avg_pct ?? -1))) best = m;
+    }
+  }
+  return {
+    total: adminManagers.length,
+    avg: pctN ? Math.round(pctSum / pctN) : null,
+    best: best,
+  };
+}
+
 function renderAdminMgrList() {
   const list = document.getElementById('adminMgrList');
   if (!list) return;
+
   if (!adminManagers.length) {
     list.innerHTML = `<div class="empty-state" style="margin-top: 8px;"><div class="empty-state-icon">😔</div><div>${t('adminEmpty')}</div></div>`;
     return;
   }
-  list.innerHTML = adminManagers.map(m => {
+
+  const summary = computeMgrSummary();
+  const avgCls = summary.avg == null ? '' : summary.avg >= 100 ? 'pct-success' : summary.avg >= 50 ? 'pct-warning' : 'pct-danger';
+  const bestName = summary.best ? escapeHtml(summary.best.name) : '—';
+  const bestPct = summary.best && summary.best.avg_pct != null ? summary.best.avg_pct + '%' : '—';
+
+  const sortBtns = [
+    { key: 'avg_pct',      label: t('mgrSortAvg') },
+    { key: 'pharm_count',  label: t('mgrSortPharms') },
+    { key: 'bonus',        label: t('mgrSortBonus') },
+    { key: 'completed',    label: t('mgrSortCompleted') },
+    { key: 'critical',     label: t('mgrSortCritical') },
+  ];
+
+  const sorted = sortedManagers();
+
+  const cardsHtml = sorted.map((m, idx) => {
+    const rank = idx + 1;
     const avg = m.avg_pct;
     const avgCls = avg == null ? '' : avg >= 100 ? 'pct-success' : avg >= 50 ? 'pct-warning' : 'pct-danger';
     const avgText = avg == null ? '—' : avg + '%';
+    const barFill = avg == null ? 0 : Math.min(avg, 100);
+    const barColor = avg == null ? 'var(--text-muted)'
+                                 : avg >= 100 ? 'var(--success)'
+                                              : avg >= 50 ? 'var(--warning)'
+                                                          : 'var(--danger)';
+    const total = m.pharm_count || 0;
+    const cPct = total ? (m.completed / total * 100) : 0;
+    const pPct = total ? (m.partial   / total * 100) : 0;
+    const rPct = total ? (m.critical  / total * 100) : 0;
     const nameSafe = escapeHtml(m.name).replace(/'/g, "\\'");
+    const rankCls = rankBadgeClass(rank);
+    const rankIco = rankBadgeIcon(rank);
+
     return `
       <div class="mgr-card" onclick="filterByManager('${nameSafe}')">
         <div class="mgr-card-head">
-          <div class="mgr-card-name">${escapeHtml(m.name)}</div>
+          <div class="mgr-card-name-row">
+            <div class="mgr-rank ${rankCls}">${rankIco}</div>
+            <div class="mgr-card-name">${escapeHtml(m.name)}</div>
+          </div>
           <div class="mgr-card-avg ${avgCls}">${avgText}</div>
         </div>
-        <div class="mgr-card-stats">
+        <div class="mgr-progress">
+          <div class="mgr-progress-fill" style="width: ${barFill}%; background: ${barColor};"></div>
+        </div>
+        <div class="mgr-card-stats" style="margin-top: 10px;">
           <div class="mgr-stat s-total">
-            <div class="mgr-stat-num">${m.pharm_count}</div>
+            <div class="mgr-stat-num">${total}</div>
             <div class="mgr-stat-label">${t('mgrStatTotal')}</div>
           </div>
           <div class="mgr-stat s-completed">
@@ -884,9 +1001,44 @@ function renderAdminMgrList() {
             <div class="mgr-stat-label">${t('mgrStatCritical')}</div>
           </div>
         </div>
+        <div class="mgr-stack">
+          <div class="mgr-stack-seg completed" style="width: ${cPct}%;"></div>
+          <div class="mgr-stack-seg partial"   style="width: ${pPct}%;"></div>
+          <div class="mgr-stack-seg critical"  style="width: ${rPct}%;"></div>
+        </div>
+        <div class="mgr-stack-legend">
+          <span class="leg"><span class="mgr-stack-dot completed"></span>${Math.round(cPct)}% ${t('mgrLegCompleted')}</span>
+          <span class="leg"><span class="mgr-stack-dot partial"></span>${Math.round(pPct)}% ${t('mgrLegPartial')}</span>
+          <span class="leg"><span class="mgr-stack-dot critical"></span>${Math.round(rPct)}% ${t('mgrLegCritical')}</span>
+        </div>
         <div class="mgr-card-bonus">${t('mgrBonusLabel')} <b>${formatMoney(m.total_bonus_raw || 0)}</b></div>
       </div>`;
   }).join('');
+
+  list.innerHTML = `
+    <div class="mgr-summary">
+      <div class="mgr-summary-box">
+        <div class="mgr-summary-label">${t('mgrSumAll')}</div>
+        <div class="mgr-summary-num">${summary.total}</div>
+      </div>
+      <div class="mgr-summary-box">
+        <div class="mgr-summary-label">${t('mgrSumAvg')}</div>
+        <div class="mgr-summary-num ${avgCls}">${summary.avg != null ? summary.avg + '%' : '—'}</div>
+      </div>
+      <div class="mgr-summary-box">
+        <div class="mgr-summary-label">${t('mgrSumBest')}</div>
+        <div class="mgr-summary-num pct-success" style="font-size: 16px;">${bestPct}</div>
+        <div class="mgr-summary-sub">${bestName}</div>
+      </div>
+    </div>
+    <div class="mgr-sort">
+      <span>${t('mgrSortLabel')}</span>
+      ${sortBtns.map(b => `
+        <button class="mgr-sort-btn ${mgrSort === b.key ? 'active' : ''}" onclick="setMgrSort('${b.key}')">${b.label}</button>
+      `).join('')}
+    </div>
+    <div style="margin-top: 12px;">${cardsHtml}</div>
+  `;
 }
 
 function renderPharmacy(pharm, d) {
