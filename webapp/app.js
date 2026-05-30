@@ -151,6 +151,21 @@ const LANG = {
     mgrLegCompleted: 'Выполнили',
     mgrLegPartial: 'В работе',
     mgrLegCritical: 'Риск',
+    prodSub: 'Продукция проекта · {n} товаров',
+    prodHeroSub: 'в квартал — потенциал по <b>{n}</b> товарам, которые вы не закупаете',
+    prodHeroAllGood: '✓ Вы участвуете во всех товарах',
+    prodHeroAllGoodSub: 'Молодцы — не упускаете ни одного бонуса',
+    prodStatActive: 'Активно',
+    prodStatTried: 'Пробовали',
+    prodStatMissed: 'Упускаете',
+    prodBadgeActive: '✓ Активно беру',
+    prodBadgeTried: '⚡ Пробовал',
+    prodBadgeMissed: '🔥 Не покупаете',
+    prodCtaSub: 'бонус за квартал, если начнёте заказывать',
+    prodActiveMeta: 'Заказы: <b>~{n} упак./мес</b> · бонус {amount} {money}/кв',
+    prodTriedMeta: 'Пробовали — стоит вернуть. Потенциал: <b>{amount} {money}/кв</b>',
+    prodFinalCta: 'Связаться с менеджером — забрать {amount} {money}',
+    prodFinalCtaNeutral: 'Связаться с менеджером',
     activityKpiTotal: 'Всего действий',
     activityKpiUsers: 'Активных юзеров',
     activityByType: 'По типам',
@@ -313,6 +328,21 @@ const LANG = {
     mgrLegCompleted: 'Bajardi',
     mgrLegPartial: 'Ishda',
     mgrLegCritical: 'Xavf',
+    prodSub: 'Loyiha mahsulotlari · {n} ta',
+    prodHeroSub: "chorakda — <b>{n}</b> ta mahsulot bo'yicha potensial, siz ularni xarid qilmaysiz",
+    prodHeroAllGood: '✓ Barcha mahsulotlarda ishtirok etyapsiz',
+    prodHeroAllGoodSub: "Yaxshi — bironta bonusni boy bermaysiz",
+    prodStatActive: 'Faol',
+    prodStatTried: 'Sinab',
+    prodStatMissed: 'Boy berasiz',
+    prodBadgeActive: '✓ Faol olaman',
+    prodBadgeTried: '⚡ Sinab',
+    prodBadgeMissed: "🔥 Xarid qilmaysiz",
+    prodCtaSub: "Buyurtma boshlasangiz — chorakdagi bonus",
+    prodActiveMeta: "Buyurtmalar: <b>~{n} dona/oy</b> · bonus {amount} {money}/chor",
+    prodTriedMeta: "Sinab ko'rgansiz — qaytarish kerak. Potensial: <b>{amount} {money}/chor</b>",
+    prodFinalCta: "Menejer bilan bog'lanish — {amount} {money} olish",
+    prodFinalCtaNeutral: "Menejer bilan bog'lanish",
     activityKpiTotal: 'Jami amallar',
     activityKpiUsers: 'Faol foydalanuvchilar',
     activityByType: 'Turlari',
@@ -362,6 +392,11 @@ window.setLang = function(lang) {
   // Перерисовать всё динамическое если данные уже загружены
   if (userData) render(userData);
   else renderDeadline();
+  // Если открыт экран продукции — перерендериваем на новом языке
+  const prodOverlay = document.getElementById('productsOverlay');
+  if (prodOverlay && prodOverlay.classList.contains('active') && currentProductsProject) {
+    window.showProjectProducts(currentProductsProject);
+  }
 };
 
 function detectLang() {
@@ -1650,8 +1685,11 @@ function getQuarterlyPotential(product, monthlyOrders) {
   return Math.round(product.price * monthlyOrders * 3 * product.bonus_pct / 100);
 }
 
+let currentProductsProject = null; // имя проекта, экран которого сейчас открыт (для перерендера при смене языка)
+
 window.showProjectProducts = function(projectName) {
   trackEvent('project_click', { project: projectName });
+  currentProductsProject = projectName;
 
   // ИНН — для стабильности демо: одна и та же аптека всегда увидит ту же раскладку.
   const inn = (currentPharm && currentPharm.inn) || (window.userData && window.userData.tg_id) || 'demo';
@@ -1684,19 +1722,19 @@ function renderProductsOverlay(projectName, products, summary) {
 
   const itemsHtml = sortByPotential.map(p => {
     const statusBadge = (() => {
-      if (p.status === 'active')     return `<span class="prod-badge active">✓ Активно беру</span>`;
-      if (p.status === 'occasional') return `<span class="prod-badge tried">⚡ Пробовал</span>`;
-      return `<span class="prod-badge missed">🔥 Не покупаете</span>`;
+      if (p.status === 'active')     return `<span class="prod-badge active">${t('prodBadgeActive')}</span>`;
+      if (p.status === 'occasional') return `<span class="prod-badge tried">${t('prodBadgeTried')}</span>`;
+      return `<span class="prod-badge missed">${t('prodBadgeMissed')}</span>`;
     })();
 
     const ctaBlock = p.status === 'missed'
       ? `<div class="prod-cta-block">
            <div class="prod-cta-amount">+${formatMoney(p.potential)} ${moneyLabel}</div>
-           <div class="prod-cta-sub">бонус за квартал, если начнёте заказывать</div>
+           <div class="prod-cta-sub">${t('prodCtaSub')}</div>
          </div>`
       : p.status === 'active'
-        ? `<div class="prod-meta-line"><span>Заказы:</span> <b>~${p.monthlyOrders} упак./мес</b> · бонус ${formatMoney(p.potential)} ${moneyLabel}/кв</div>`
-        : `<div class="prod-meta-line">Пробовали — стоит вернуть. Потенциал: <b>${formatMoney(p.potential)} ${moneyLabel}/кв</b></div>`;
+        ? `<div class="prod-meta-line">${t('prodActiveMeta', { n: p.monthlyOrders, amount: formatMoney(p.potential), money: moneyLabel })}</div>`
+        : `<div class="prod-meta-line">${t('prodTriedMeta', { amount: formatMoney(p.potential), money: moneyLabel })}</div>`;
 
     return `
       <div class="prod-card ${p.status}">
@@ -1716,16 +1754,16 @@ function renderProductsOverlay(projectName, products, summary) {
 
   const heroText = summary.lostBonus > 0
     ? `<div class="prod-hero-amount">+${formatMoney(summary.lostBonus)} ${moneyLabel}</div>
-       <div class="prod-hero-sub">в квартал — потенциал по <b>${summary.missedCount}</b> товарам, которые вы не закупаете</div>`
-    : `<div class="prod-hero-amount" style="font-size: 22px;">✓ Вы участвуете во всех товарах</div>
-       <div class="prod-hero-sub">Молодцы — не упускаете ни одного бонуса</div>`;
+       <div class="prod-hero-sub">${t('prodHeroSub', { n: summary.missedCount })}</div>`
+    : `<div class="prod-hero-amount" style="font-size: 22px;">${t('prodHeroAllGood')}</div>
+       <div class="prod-hero-sub">${t('prodHeroAllGoodSub')}</div>`;
 
   const finalCta = summary.lostBonus > 0
     ? `<button class="prod-final-cta" onclick="productCtaClick('${escapeHtml(projectName)}')">
-         Связаться с менеджером — забрать ${formatMoney(summary.lostBonus)} ${moneyLabel}
+         ${t('prodFinalCta', { amount: formatMoney(summary.lostBonus), money: moneyLabel })}
        </button>`
     : `<button class="prod-final-cta" onclick="productCtaClick('${escapeHtml(projectName)}')">
-         Связаться с менеджером
+         ${t('prodFinalCtaNeutral')}
        </button>`;
 
   overlay.innerHTML = `
@@ -1733,7 +1771,7 @@ function renderProductsOverlay(projectName, products, summary) {
       <button class="prod-close" onclick="closeProducts()">×</button>
       <div class="prod-sheet-head">
         <div class="prod-project-name">${escapeHtml(projectName)}</div>
-        <div class="prod-project-sub">Продукция проекта · ${products.length} товаров</div>
+        <div class="prod-project-sub">${t('prodSub', { n: products.length })}</div>
       </div>
 
       <div class="prod-hero">
@@ -1741,9 +1779,9 @@ function renderProductsOverlay(projectName, products, summary) {
       </div>
 
       <div class="prod-stats">
-        <div class="prod-stat"><div class="prod-stat-num" style="color: var(--success);">${summary.activeCount}</div><div class="prod-stat-lbl">Активно</div></div>
-        <div class="prod-stat"><div class="prod-stat-num" style="color: var(--warning);">${summary.tryingCount}</div><div class="prod-stat-lbl">Пробовали</div></div>
-        <div class="prod-stat"><div class="prod-stat-num" style="color: var(--danger);">${summary.missedCount}</div><div class="prod-stat-lbl">Упускаете</div></div>
+        <div class="prod-stat"><div class="prod-stat-num" style="color: var(--success);">${summary.activeCount}</div><div class="prod-stat-lbl">${t('prodStatActive')}</div></div>
+        <div class="prod-stat"><div class="prod-stat-num" style="color: var(--warning);">${summary.tryingCount}</div><div class="prod-stat-lbl">${t('prodStatTried')}</div></div>
+        <div class="prod-stat"><div class="prod-stat-num" style="color: var(--danger);">${summary.missedCount}</div><div class="prod-stat-lbl">${t('prodStatMissed')}</div></div>
       </div>
 
       <div class="prod-list">${itemsHtml}</div>
@@ -1757,6 +1795,7 @@ function renderProductsOverlay(projectName, products, summary) {
 window.closeProducts = function() {
   const overlay = document.getElementById('productsOverlay');
   if (overlay) overlay.classList.remove('active');
+  currentProductsProject = null;
 };
 
 window.productCtaClick = function(projectName) {
