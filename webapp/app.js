@@ -1565,12 +1565,204 @@ window.openTg = function(username, e) {
 };
 
 
+// ============================================================
+// FAKE PRODUCTS (для демо) — реалистичный набор по проектам.
+// Когда придёт реальная "Продукция" таблица — заменим этот объект на /api/projects/{name}/products.
+// ============================================================
+const FAKE_PRODUCTS = {
+  'КРКА': [
+    { id: 'krka-enal',  name: 'Эналаприл', dosage: '10 мг', form: 'таб. №20',  emoji: '💊', price: 12500, monthly_orders_avg: 20, bonus_pct: 7, desc: 'Артериальная гипертензия' },
+    { id: 'krka-noli',  name: 'Нолипрел Би-форте', dosage: '5+1.25 мг', form: 'таб. №30', emoji: '💊', price: 95000, monthly_orders_avg: 12, bonus_pct: 7, desc: 'Эссенциальная гипертензия' },
+    { id: 'krka-zofe',  name: 'Зофеноприл', dosage: '30 мг', form: 'таб. №28', emoji: '💊', price: 78000, monthly_orders_avg: 8,  bonus_pct: 7, desc: 'ИБС, постинфарктное состояние' },
+    { id: 'krka-loza',  name: 'Лозартан', dosage: '50 мг', form: 'таб. №30',  emoji: '💊', price: 38000, monthly_orders_avg: 15, bonus_pct: 7, desc: 'АГ, диабетическая нефропатия' },
+    { id: 'krka-sept',  name: 'Septolete', dosage: '1.2 мг', form: 'паст. №18', emoji: '🍬', price: 22000, monthly_orders_avg: 35, bonus_pct: 7, desc: 'Боль в горле, инфекции полости рта' },
+  ],
+  'KUSUM': [
+    { id: 'kus-levo',   name: 'Левомеколь', dosage: '40 г', form: 'мазь',     emoji: '🧴', price: 8200,  monthly_orders_avg: 30, bonus_pct: 3, desc: 'Раны, гнойничковые поражения' },
+    { id: 'kus-deks',   name: 'Декспантенол', dosage: '5%',  form: 'крем 30г', emoji: '🧴', price: 14500, monthly_orders_avg: 22, bonus_pct: 3, desc: 'Регенерация кожи' },
+    { id: 'kus-amox',   name: 'Амоксициллин', dosage: '500 мг', form: 'капс. №20', emoji: '💊', price: 18000, monthly_orders_avg: 18, bonus_pct: 3, desc: 'Бактериальные инфекции' },
+    { id: 'kus-vita',   name: 'Витамин Д3', dosage: '2000 МЕ', form: 'капли 10мл', emoji: '💧', price: 32000, monthly_orders_avg: 25, bonus_pct: 3, desc: 'Дефицит витамина D' },
+  ],
+  'WELFARM': [
+    { id: 'wel-para',   name: 'Парацетамол', dosage: '500 мг', form: 'таб. №20', emoji: '💊', price: 4500,  monthly_orders_avg: 50, bonus_pct: 7, desc: 'Жаропонижающее, обезболивающее' },
+    { id: 'wel-ibup',   name: 'Ибупрофен', dosage: '400 мг', form: 'таб. №20',  emoji: '💊', price: 7800,  monthly_orders_avg: 40, bonus_pct: 7, desc: 'НПВС, обезболивание' },
+    { id: 'wel-mult',   name: 'Мультивитамин', dosage: 'комплекс', form: 'таб. №60', emoji: '🌿', price: 48000, monthly_orders_avg: 18, bonus_pct: 7, desc: 'Профилактика гиповитаминоза' },
+    { id: 'wel-omeg',   name: 'Омега-3', dosage: '1000 мг', form: 'капс. №60', emoji: '🐟', price: 65000, monthly_orders_avg: 14, bonus_pct: 7, desc: 'ПНЖК, сердечно-сосудистая система' },
+  ],
+  'GETZ PHARMA': [
+    { id: 'getz-azit',  name: 'Азитромицин', dosage: '500 мг', form: 'таб. №3',  emoji: '💊', price: 28000, monthly_orders_avg: 24, bonus_pct: 7, desc: 'Антибиотик широкого спектра' },
+    { id: 'getz-clar',  name: 'Кларитромицин', dosage: '500 мг', form: 'таб. №14', emoji: '💊', price: 56000, monthly_orders_avg: 12, bonus_pct: 7, desc: 'Инфекции дыхательных путей' },
+    { id: 'getz-mela',  name: 'Мелатонин', dosage: '3 мг', form: 'таб. №30',  emoji: '🌙', price: 42000, monthly_orders_avg: 20, bonus_pct: 7, desc: 'Регуляция сна' },
+  ],
+  'BAYER': [
+    { id: 'bay-asp',    name: 'Аспирин Кардио', dosage: '100 мг', form: 'таб. №30', emoji: '❤️', price: 35000, monthly_orders_avg: 28, bonus_pct: 7, desc: 'Профилактика тромбозов' },
+    { id: 'bay-can',    name: 'Канестен',  dosage: '1%', form: 'крем 20г',     emoji: '🧴', price: 48000, monthly_orders_avg: 16, bonus_pct: 7, desc: 'Грибковые инфекции кожи' },
+    { id: 'bay-cipro',  name: 'Ципрофлоксацин', dosage: '500 мг', form: 'таб. №10', emoji: '💊', price: 22000, monthly_orders_avg: 22, bonus_pct: 7, desc: 'Бактериальные инфекции' },
+  ],
+  'FERON': [
+    { id: 'fer-ifn',    name: 'Интерферон', dosage: '500000 МЕ', form: 'свечи №10', emoji: '🛡️', price: 95000, monthly_orders_avg: 15, bonus_pct: 7, desc: 'Иммуномодулятор' },
+    { id: 'fer-anaf',   name: 'Анаферон',  dosage: 'детский', form: 'таб. №20',    emoji: '👶', price: 28000, monthly_orders_avg: 32, bonus_pct: 7, desc: 'Профилактика ОРВИ у детей' },
+  ],
+  'SAFE': [
+    { id: 'safe-glov',  name: 'Перчатки нитриловые', dosage: 'размер M', form: 'уп. 100', emoji: '🧤', price: 75000, monthly_orders_avg: 18, bonus_pct: 7, desc: 'Расходные мед. изделия' },
+    { id: 'safe-mask',  name: 'Маска медицинская', dosage: '3-сл.', form: 'уп. 50', emoji: '😷', price: 22000, monthly_orders_avg: 25, bonus_pct: 7, desc: 'Защита от вирусов' },
+  ],
+};
+
+// Дефолтный набор для проектов, которых нет в FAKE_PRODUCTS — чтобы экран не был пустой
+const DEFAULT_FAKE_PRODUCTS = [
+  { id: 'gen-1', name: 'Препарат A', dosage: '—', form: 'упак.',  emoji: '💊', price: 25000, monthly_orders_avg: 20, bonus_pct: 7, desc: 'Демо-товар' },
+  { id: 'gen-2', name: 'Препарат B', dosage: '—', form: 'упак.',  emoji: '💊', price: 18000, monthly_orders_avg: 28, bonus_pct: 7, desc: 'Демо-товар' },
+  { id: 'gen-3', name: 'Препарат C', dosage: '—', form: 'упак.',  emoji: '💊', price: 42000, monthly_orders_avg: 14, bonus_pct: 7, desc: 'Демо-товар' },
+];
+
+function getFakeProducts(projectName) {
+  const upper = (projectName || '').toUpperCase().trim();
+  return FAKE_PRODUCTS[upper] || DEFAULT_FAKE_PRODUCTS;
+}
+
+// Простой стабильный хеш — чтобы у одной аптеки всегда был один и тот же набор статусов
+function simpleHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) + s.charCodeAt(i);
+  return Math.abs(h) >>> 0;
+}
+
+// Для каждого (аптека × товар) детерминированно вычисляем "статус закупки"
+function getProductStatus(pharmacyInn, productId) {
+  const h = simpleHash((pharmacyInn || 'demo') + ':' + productId);
+  const bucket = h % 100;
+  if (bucket < 30) return 'active';     // активно покупает
+  if (bucket < 50) return 'occasional'; // пробовал
+  return 'missed';                       // не покупает — целевая группа для допродаж
+}
+
+// Прогноз месячного объёма с небольшим разбросом, тоже стабильный
+function getMonthlyOrders(pharmacyInn, productId, avg) {
+  const h = simpleHash((pharmacyInn || 'demo') + ':' + productId + ':qty');
+  const factor = 0.6 + (h % 80) / 100;  // от 0.6 до 1.4 от среднего
+  return Math.round(avg * factor);
+}
+
+// Сценарий "сколько потенциально может заработать аптека, если включится в проект по этому товару"
+function getQuarterlyPotential(product, monthlyOrders) {
+  // Бонус = (закупочная цена × кол-во в месяц × 3 месяца) × bonus_pct%
+  return Math.round(product.price * monthlyOrders * 3 * product.bonus_pct / 100);
+}
+
 window.showProjectProducts = function(projectName) {
   trackEvent('project_click', { project: projectName });
-  const tg = window.Telegram && window.Telegram.WebApp;
-  const msg = t('productsStub', { name: projectName });
-  if (tg && tg.showAlert) tg.showAlert(msg);
-  else alert(msg);
+
+  // ИНН — для стабильности демо: одна и та же аптека всегда увидит ту же раскладку.
+  const inn = (currentPharm && currentPharm.inn) || (window.userData && window.userData.tg_id) || 'demo';
+  const products = getFakeProducts(projectName);
+
+  // Раскладываем по статусам, считаем потенциал по "missed"
+  const enriched = products.map(p => {
+    const status = getProductStatus(String(inn), p.id);
+    const monthlyOrders = getMonthlyOrders(String(inn), p.id, p.monthly_orders_avg);
+    const potential = getQuarterlyPotential(p, monthlyOrders);
+    return { ...p, status, monthlyOrders, potential };
+  });
+
+  const totalMissed = enriched.filter(x => x.status === 'missed');
+  const lostBonus = totalMissed.reduce((s, x) => s + x.potential, 0);
+  const activeCount = enriched.filter(x => x.status === 'active').length;
+  const tryingCount = enriched.filter(x => x.status === 'occasional').length;
+  const missedCount = totalMissed.length;
+
+  renderProductsOverlay(projectName, enriched, { lostBonus, activeCount, tryingCount, missedCount });
+};
+
+function renderProductsOverlay(projectName, products, summary) {
+  const overlay = document.getElementById('productsOverlay');
+  if (!overlay) return;
+
+  const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
+
+  const sortByPotential = [...products].sort((a, b) => b.potential - a.potential);
+
+  const itemsHtml = sortByPotential.map(p => {
+    const statusBadge = (() => {
+      if (p.status === 'active')     return `<span class="prod-badge active">✓ Активно беру</span>`;
+      if (p.status === 'occasional') return `<span class="prod-badge tried">⚡ Пробовал</span>`;
+      return `<span class="prod-badge missed">🔥 Не покупаете</span>`;
+    })();
+
+    const ctaBlock = p.status === 'missed'
+      ? `<div class="prod-cta-block">
+           <div class="prod-cta-amount">+${formatMoney(p.potential)} ${moneyLabel}</div>
+           <div class="prod-cta-sub">бонус за квартал, если начнёте заказывать</div>
+         </div>`
+      : p.status === 'active'
+        ? `<div class="prod-meta-line"><span>Заказы:</span> <b>~${p.monthlyOrders} упак./мес</b> · бонус ${formatMoney(p.potential)} ${moneyLabel}/кв</div>`
+        : `<div class="prod-meta-line">Пробовали — стоит вернуть. Потенциал: <b>${formatMoney(p.potential)} ${moneyLabel}/кв</b></div>`;
+
+    return `
+      <div class="prod-card ${p.status}">
+        <div class="prod-head">
+          <div class="prod-emoji">${p.emoji}</div>
+          <div class="prod-title-block">
+            <div class="prod-name">${escapeHtml(p.name)} <span class="prod-dosage">${escapeHtml(p.dosage)}</span></div>
+            <div class="prod-meta">${escapeHtml(p.form)} · ${formatMoney(p.price)} ${moneyLabel}/упак</div>
+            <div class="prod-desc">${escapeHtml(p.desc)}</div>
+          </div>
+        </div>
+        <div class="prod-status-row">${statusBadge}</div>
+        ${ctaBlock}
+      </div>
+    `;
+  }).join('');
+
+  const heroText = summary.lostBonus > 0
+    ? `<div class="prod-hero-amount">+${formatMoney(summary.lostBonus)} ${moneyLabel}</div>
+       <div class="prod-hero-sub">в квартал — потенциал по <b>${summary.missedCount}</b> товарам, которые вы не закупаете</div>`
+    : `<div class="prod-hero-amount" style="font-size: 22px;">✓ Вы участвуете во всех товарах</div>
+       <div class="prod-hero-sub">Молодцы — не упускаете ни одного бонуса</div>`;
+
+  const finalCta = summary.lostBonus > 0
+    ? `<button class="prod-final-cta" onclick="productCtaClick('${escapeHtml(projectName)}')">
+         Связаться с менеджером — забрать ${formatMoney(summary.lostBonus)} ${moneyLabel}
+       </button>`
+    : `<button class="prod-final-cta" onclick="productCtaClick('${escapeHtml(projectName)}')">
+         Связаться с менеджером
+       </button>`;
+
+  overlay.innerHTML = `
+    <div class="prod-sheet">
+      <button class="prod-close" onclick="closeProducts()">×</button>
+      <div class="prod-sheet-head">
+        <div class="prod-project-name">${escapeHtml(projectName)}</div>
+        <div class="prod-project-sub">Продукция проекта · ${products.length} товаров</div>
+      </div>
+
+      <div class="prod-hero">
+        ${heroText}
+      </div>
+
+      <div class="prod-stats">
+        <div class="prod-stat"><div class="prod-stat-num" style="color: var(--success);">${summary.activeCount}</div><div class="prod-stat-lbl">Активно</div></div>
+        <div class="prod-stat"><div class="prod-stat-num" style="color: var(--warning);">${summary.tryingCount}</div><div class="prod-stat-lbl">Пробовали</div></div>
+        <div class="prod-stat"><div class="prod-stat-num" style="color: var(--danger);">${summary.missedCount}</div><div class="prod-stat-lbl">Упускаете</div></div>
+      </div>
+
+      <div class="prod-list">${itemsHtml}</div>
+
+      <div class="prod-footer-cta">${finalCta}</div>
+    </div>
+  `;
+  overlay.classList.add('active');
+}
+
+window.closeProducts = function() {
+  const overlay = document.getElementById('productsOverlay');
+  if (overlay) overlay.classList.remove('active');
+};
+
+window.productCtaClick = function(projectName) {
+  trackEvent('project_click', { project: projectName, action: 'cta_to_manager' });
+  window.closeProducts();
+  contactManager();
 };
 
 function renderError(msg) {

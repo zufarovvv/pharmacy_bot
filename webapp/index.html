@@ -861,6 +861,186 @@ body {
 .app-loader-hint {
   font-size: 13px; color: var(--text-muted); font-weight: 600;
 }
+
+/* ===== PRODUCTS OVERLAY (карточка проекта) ===== */
+.prod-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,0.6);
+  z-index: 9998;
+  display: none;
+  align-items: flex-end; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.prod-overlay.active { display: flex; }
+.prod-sheet {
+  background: var(--bg-primary);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 92vh;
+  overflow-y: auto;
+  position: relative;
+  animation: prodSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  padding-bottom: 100px;
+}
+@keyframes prodSlide {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.prod-close {
+  position: sticky; top: 12px; right: 12px;
+  float: right;
+  background: var(--surface); border: none;
+  width: 36px; height: 36px; border-radius: 50%;
+  font-size: 20px; cursor: pointer;
+  color: var(--text-secondary);
+  margin: 12px 12px 0 0;
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+.prod-sheet-head {
+  padding: 8px 20px 4px;
+  text-align: left;
+}
+.prod-project-name {
+  font-size: 24px; font-weight: 900;
+  color: var(--text-primary);
+  letter-spacing: -0.6px;
+}
+.prod-project-sub {
+  font-size: 12px; color: var(--text-muted);
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.prod-hero {
+  margin: 16px;
+  padding: 22px 18px;
+  background: linear-gradient(135deg, var(--danger), var(--danger-dark));
+  color: white;
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: 0 12px 30px -10px rgba(185,28,28,0.4);
+}
+.prod-hero-amount {
+  font-size: 34px; font-weight: 900;
+  letter-spacing: -1.2px; line-height: 1.1;
+}
+.prod-hero-sub {
+  font-size: 13px;
+  margin-top: 6px;
+  opacity: 0.95;
+  line-height: 1.4;
+}
+.prod-hero-sub b { font-weight: 800; }
+
+.prod-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin: 0 16px;
+}
+.prod-stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  text-align: center;
+}
+.prod-stat-num { font-size: 22px; font-weight: 900; line-height: 1.1; }
+.prod-stat-lbl { font-size: 10px; color: var(--text-muted); margin-top: 2px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+
+.prod-list { padding: 16px; display: grid; gap: 10px; }
+.prod-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+.prod-card.active   { border-left: 4px solid var(--success); }
+.prod-card.occasional { border-left: 4px solid var(--warning); }
+.prod-card.missed   { border-left: 4px solid var(--danger); }
+
+.prod-head { display: flex; gap: 12px; }
+.prod-emoji {
+  font-size: 32px;
+  width: 48px; height: 48px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
+.prod-title-block { flex: 1; min-width: 0; }
+.prod-name {
+  font-size: 15px; font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+}
+.prod-dosage {
+  font-size: 12px; font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: 4px;
+}
+.prod-meta {
+  font-size: 11px; color: var(--text-muted);
+  margin-top: 2px; font-weight: 600;
+}
+.prod-desc {
+  font-size: 12px; color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.prod-status-row { margin-top: 10px; }
+.prod-badge {
+  display: inline-block;
+  font-size: 11px; font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.2px;
+}
+.prod-badge.active { background: var(--success-soft); color: var(--success-dark); }
+.prod-badge.tried  { background: var(--warning-soft); color: var(--warning-text); }
+.prod-badge.missed { background: var(--danger-soft); color: var(--danger-dark); }
+
+.prod-cta-block {
+  margin-top: 12px;
+  padding: 12px;
+  background: linear-gradient(135deg, var(--danger-bg), var(--danger-soft));
+  border-radius: var(--radius);
+  text-align: center;
+}
+.prod-cta-amount {
+  font-size: 20px; font-weight: 900;
+  color: var(--danger-dark);
+  letter-spacing: -0.5px;
+}
+.prod-cta-sub {
+  font-size: 11px; color: var(--danger);
+  margin-top: 2px; font-weight: 600;
+}
+.prod-meta-line {
+  margin-top: 10px;
+  font-size: 12px; color: var(--text-secondary);
+  font-weight: 500;
+}
+.prod-meta-line b { color: var(--text-primary); font-weight: 700; }
+
+.prod-footer-cta {
+  position: sticky; bottom: 0;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, transparent 0%, var(--bg-primary) 30%);
+}
+.prod-final-cta {
+  width: 100%;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: white;
+  font-family: inherit;
+  font-size: 14px; font-weight: 800;
+  border: none; border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px -6px rgba(14,116,144,0.4);
+  letter-spacing: -0.2px;
+  line-height: 1.3;
+}
 </style>
 </head>
 <body>
@@ -1044,6 +1224,9 @@ body {
 <button class="sticky-cta" id="stickyCta" onclick="contactManager()">
   <span id="stickyText">—</span>
 </button>
+
+<!-- ====== PRODUCTS OVERLAY (клик по проекту → товары) ====== -->
+<div class="prod-overlay" id="productsOverlay"></div>
 
 <!-- ====== PROMO MODAL (показ после нескольких секунд при первом входе) ====== -->
 <div class="promo-overlay" id="promoOverlay">
