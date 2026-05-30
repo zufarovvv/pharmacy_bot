@@ -399,7 +399,7 @@ async function loadUserData() {
   const url = new URL(API_BASE + '/api/me');
   if (initData) url.searchParams.set('init_data', initData);
   else if (tgIdFromUrl) url.searchParams.set('tg_id', tgIdFromUrl);
-  else { renderError(t('errNoTg')); return; }
+  else { hideAppLoader(); renderError(t('errNoTg')); return; }
 
   try {
     const res = await fetch(url, {
@@ -1393,6 +1393,9 @@ window.showProjectProducts = function(projectName) {
 };
 
 function renderError(msg) {
+  // Дефенсивно — на случай если лоадер ещё висит (не должны видеть ошибку
+  // под полупрозрачной заглушкой).
+  hideAppLoader();
   const container = document.querySelector('.container');
   const div = document.createElement('div');
   div.className = 'card';
