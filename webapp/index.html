@@ -914,6 +914,142 @@ body {
   font-size: 13px; color: var(--text-muted); font-weight: 600;
 }
 
+/* ===== FAQ FLOATING BUTTON ===== */
+.faq-fab {
+  position: fixed;
+  bottom: 20px; right: 16px;
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: white;
+  border: none; cursor: pointer;
+  font-size: 22px; font-weight: 700;
+  box-shadow: 0 8px 24px -6px rgba(14,116,144,0.5);
+  z-index: 90;
+  transition: transform 0.15s;
+}
+.faq-fab:hover { transform: scale(1.05); }
+.faq-fab:active { transform: scale(0.95); }
+
+/* ===== FAQ OVERLAY ===== */
+.faq-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,0.6);
+  z-index: 9999;
+  display: none;
+  align-items: flex-end; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.faq-overlay.active { display: flex; }
+.faq-sheet {
+  background: var(--bg-primary);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  overflow-y: auto;
+  position: relative;
+  animation: prodSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 0 0 30px;
+}
+.faq-close {
+  position: absolute; top: 14px; right: 14px;
+  background: var(--surface); border: none;
+  width: 34px; height: 34px; border-radius: 50%;
+  font-size: 18px; cursor: pointer;
+  color: var(--text-secondary);
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+.faq-header {
+  padding: 24px 20px 16px;
+}
+.faq-title {
+  font-size: 26px; font-weight: 900;
+  letter-spacing: -0.6px;
+  color: var(--text-primary);
+}
+.faq-sub {
+  font-size: 13px; color: var(--text-muted);
+  margin-top: 2px; font-weight: 600;
+}
+.faq-search {
+  width: calc(100% - 32px);
+  margin: 0 16px;
+  padding: 12px 14px;
+  font-family: inherit; font-size: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+}
+.faq-search:focus { outline: none; border-color: var(--primary); }
+.faq-list {
+  padding: 12px 16px;
+  display: flex; flex-direction: column;
+  gap: 8px;
+}
+.faq-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.faq-item.open { border-color: var(--primary); }
+.faq-q {
+  width: 100%; text-align: left;
+  background: transparent; border: none; cursor: pointer;
+  padding: 14px 14px;
+  font-family: inherit;
+  font-size: 14px; font-weight: 700;
+  color: var(--text-primary);
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  letter-spacing: -0.2px;
+}
+.faq-q::after {
+  content: '+';
+  font-size: 20px; font-weight: 700;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.faq-item.open .faq-q::after { content: '−'; }
+.faq-a {
+  padding: 0 14px 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: none;
+}
+.faq-item.open .faq-a { display: block; }
+.faq-a b { color: var(--text-primary); font-weight: 700; }
+.faq-cat {
+  display: inline-block;
+  font-size: 10px; font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-right: 6px;
+}
+.faq-empty {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.faq-tour-btn {
+  display: block;
+  margin: 12px 16px 0;
+  width: calc(100% - 32px);
+  background: var(--bg-secondary);
+  color: var(--primary);
+  border: 1px dashed var(--primary);
+  border-radius: 10px;
+  padding: 12px;
+  font-family: inherit;
+  font-size: 13px; font-weight: 700;
+  cursor: pointer;
+}
+
 /* ===== PRODUCTS OVERLAY (карточка проекта) ===== */
 .prod-overlay {
   position: fixed; inset: 0;
@@ -1377,6 +1513,23 @@ body {
   <span id="stickyText">—</span>
 </button>
 
+<!-- ====== FAQ OVERLAY (клик по "?" внизу) ====== -->
+<div class="faq-overlay" id="faqOverlay">
+  <div class="faq-sheet">
+    <button class="faq-close" onclick="closeFaq()">×</button>
+    <div class="faq-header">
+      <div class="faq-title" data-i18n="faqTitle">FAQ</div>
+      <div class="faq-sub" data-i18n="faqSub">Частые вопросы</div>
+    </div>
+    <input class="faq-search" type="text" id="faqSearch" data-i18n-placeholder="faqSearch" placeholder="Найти вопрос...">
+    <div class="faq-list" id="faqList"></div>
+    <button class="faq-tour-btn" onclick="faqStartTour()" data-i18n="faqStartTour">▶ Запустить ознакомительный тур</button>
+  </div>
+</div>
+
+<!-- Кнопка "?" — открыть FAQ -->
+<button class="faq-fab" id="faqFab" onclick="openFaq()">?</button>
+
 <!-- ====== PRODUCTS OVERLAY (клик по проекту → товары) ====== -->
 <div class="prod-overlay" id="productsOverlay"></div>
 
@@ -1434,7 +1587,8 @@ body {
     </div>
   </div>
 </div>
-<button class="tour-restart" onclick="tourShowWelcome()" title="?">?</button>
+<!-- старая кнопка тура убрана — её роль выполняет faq-fab выше (он же запускает тур из FAQ) -->
+
 
 <script src="./app.js"></script>
 </body>

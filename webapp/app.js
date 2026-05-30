@@ -130,6 +130,11 @@ const LANG = {
     bizSecRevenue: 'ВЫРУЧКА Q1',
     bizSecPotential: 'ДОП. БОНУС',
     bizSecRevenueShort: 'ВЫРУЧКА',
+    faqTitle: 'Вопросы',
+    faqSub: 'Быстрые ответы на частые вопросы',
+    faqSearch: 'Найти вопрос...',
+    faqStartTour: '▶ Запустить ознакомительный тур',
+    faqEmpty: 'Ничего не найдено по вашему запросу',
     promoEyebrow: 'УПУЩЕННАЯ ВЫГОДА',
     promoCtaText: 'Связаться с менеджером',
     promoSkip: 'Не сейчас',
@@ -329,6 +334,11 @@ const LANG = {
     bizSecRevenue: "TUSHUM Q1",
     bizSecPotential: "QO'SH. BONUS",
     bizSecRevenueShort: 'TUSHUM',
+    faqTitle: 'Savollar',
+    faqSub: "Tez-tez beriladigan savollar uchun tezkor javoblar",
+    faqSearch: 'Savol topish...',
+    faqStartTour: '▶ Tanishuv turini boshlash',
+    faqEmpty: "So'rovingiz bo'yicha hech narsa topilmadi",
     promoEyebrow: 'BOY BERILGAN FOYDA',
     promoCtaText: "Menejer bilan bog'lanish",
     promoSkip: 'Hozir emas',
@@ -1703,6 +1713,112 @@ window.openTg = function(username, e) {
   else window.open(link, '_blank');
 };
 
+
+// ============================================================
+// FAQ — частые вопросы (быстрые ответы)
+// ============================================================
+const FAQ_DATA = {
+  ru: [
+    { cat: 'Метрики',  q: 'Что значит «Можно забрать»?',           a: 'Это сумма бонуса, которую вы можете дополнительно получить до конца квартала, если закроете план по проектам. Каждый незакрытый проект уменьшает эту сумму.' },
+    { cat: 'Метрики',  q: 'Что значит «Заработали»?',              a: 'Бонус, уже накопленный за этот квартал — то, что DATFO выплатит вам по итогам. Считается по факту выполнения каждого проекта.' },
+    { cat: 'Метрики',  q: 'Что показывает «Выручка Q1»?',          a: 'Общая сумма ваших продаж по проектам DATFO за квартал — то, сколько вы пробили в кассу по этим товарам.' },
+    { cat: 'Метрики',  q: 'Что значит % квартала?',                a: 'Процент выполнения квартального плана по всем вашим проектам вместе. <b>100% и выше</b> = план закрыт, полный бонус ваш.' },
+    { cat: 'Бонусы',   q: 'Как считается мой бонус?',              a: 'По каждому проекту: <b>квартальный план × % бонуса проекта × ваш % выполнения</b>. Полный бонус — при выполнении 100%. KRKA = 7%, KUSUM = 3%, BAYER = 7% и т.д.' },
+    { cat: 'Бонусы',   q: 'Когда мне выплачивают бонус?',          a: 'По итогам каждого квартала после закрытия отчётности. Уточните точные сроки у вашего менеджера.' },
+    { cat: 'Бонусы',   q: 'Можно ли получить бонус за перевыполнение?', a: 'Да — при выполнении плана выше 100% начисляется дополнительный бонус. Условия уточните у менеджера.' },
+    { cat: 'Продукты', q: 'Что значит «Нет в портфеле»?',          a: 'Вы не закупаете этот товар. Соседние аптеки уже на нём зарабатывают — начните продавать и получите долю рынка + бонус.' },
+    { cat: 'Продукты', q: 'Где увидеть товары проекта?',           a: 'Нажмите на любой проект в списке «Активные проекты». Откроется список с ценами, маржей, прибылью с упаковки и потенциалом по каждому товару.' },
+    { cat: 'Продукты', q: 'Как заказать товар?',                   a: 'Нажмите «Добавить в портфель» в карточке товара или «Связаться с менеджером» — менеджер оформит заявку.' },
+    { cat: 'Продукты', q: 'Что значит «топ-3 района»?',            a: 'Вы входите в тройку лидеров среди аптек района по продажам этого товара. Так держать.' },
+    { cat: 'Менеджер', q: 'Как связаться с менеджером?',           a: 'Нажмите кнопку «Связаться с менеджером» в любом разделе — откроется чат с вашим персональным менеджером в Telegram.' },
+    { cat: 'Менеджер', q: 'Что делать если данные неправильные?',   a: 'Свяжитесь с менеджером — он проверит источник и поправит данные в системе. Обновление займёт до 5 минут.' },
+    { cat: 'Сервис',   q: 'Когда обновляются данные?',             a: 'Автоматически каждые 5 минут. Менеджеры обновляют исходную таблицу — система сама подтягивает свежие цифры.' },
+    { cat: 'Сервис',   q: 'Можно ли изменить язык?',               a: 'Да — кнопки <b>RU / UZ</b> в правом верхнем углу. Язык запоминается.' },
+    { cat: 'Сервис',   q: 'Кому пожаловаться?',                    a: 'Прямой контакт с менеджером — кнопка «Связаться с менеджером». Если жалоба на менеджера — пишите администратору DATFO.' },
+  ],
+  uz: [
+    { cat: 'Metrikalar', q: '«Olish mumkin» nima degani?',          a: "Loyihalar rejasini chorak oxirigacha bajarsangiz olishingiz mumkin bo'lgan bonus summasi." },
+    { cat: 'Metrikalar', q: '«Topilgan» nima?',                     a: 'Bu chorakda allaqachon to\'plangan bonus — DATFO chorak yakunida sizga to\'laydigan summa.' },
+    { cat: 'Metrikalar', q: '«Tushum Q1» nimani ko\'rsatadi?',      a: 'Chorakdagi DATFO loyihalari bo\'yicha umumiy sotuvlar summasi.' },
+    { cat: 'Metrikalar', q: 'Chorak %i nima degani?',               a: 'Hamma loyihalar bo\'yicha chorak rejasining bajarilish foizi. <b>100% va undan yuqori</b> = reja yopildi.' },
+    { cat: 'Bonuslar',   q: 'Bonusim qanday hisoblanadi?',          a: 'Har loyiha bo\'yicha: <b>chorak rejasi × loyiha bonusi % × bajarilish %</b>. To\'liq bonus — 100% bajarganda.' },
+    { cat: 'Bonuslar',   q: 'Bonus qachon to\'lanadi?',             a: 'Har chorak yakuni bo\'yicha. Aniq muddatlarni menejerdan so\'rang.' },
+    { cat: 'Bonuslar',   q: 'Ortiqcha bajarganda bonus bormi?',     a: '100%dan ortiqcha bajarganda qo\'shimcha bonus beriladi. Shartlarni menejerdan so\'rang.' },
+    { cat: 'Mahsulotlar', q: '«Portfelda yo\'q» nima?',             a: 'Bu mahsulotni xarid qilmaysiz. Qo\'shni dorixonalar bu mahsulotda daromad oladi — boshlang.' },
+    { cat: 'Mahsulotlar', q: 'Loyiha mahsulotlarini qayerda ko\'raman?', a: 'Loyihaga bosing — narxlari, marjasi, foydasi va potensiali bilan ro\'yxat ochiladi.' },
+    { cat: 'Mahsulotlar', q: 'Mahsulot qanday buyurtma qilinadi?',  a: 'Mahsulot kartochkasidagi «Portfelga qo\'shish» yoki «Menejer bilan bog\'lanish» tugmasini bosing.' },
+    { cat: 'Menejer',    q: 'Menejer bilan qanday bog\'lanaman?',   a: 'Istalgan bo\'limda «Menejer bilan bog\'lanish» tugmasini bosing — Telegram chati ochiladi.' },
+    { cat: 'Menejer',    q: 'Ma\'lumotlar noto\'g\'ri bo\'lsa?',     a: 'Menejerga murojaat qiling — u manbani tekshirib tuzatadi. 5 daqiqagacha yangilanadi.' },
+    { cat: 'Servis',     q: 'Ma\'lumotlar qachon yangilanadi?',     a: 'Har 5 daqiqada avtomatik. Menejerlar manba jadvalini yangilashi bilan tizim yangi raqamlarni oladi.' },
+    { cat: 'Servis',     q: 'Tilni o\'zgartirsa bo\'ladimi?',       a: 'Ha — yuqori o\'ng burchakdagi <b>RU / UZ</b> tugmalari. Til eslab qolinadi.' },
+    { cat: 'Servis',     q: 'Shikoyat qayerga?',                    a: 'Menejer bilan bog\'lanish tugmasi orqali. Menejer haqida shikoyat bo\'lsa — DATFO administratoriga yozing.' },
+  ],
+};
+
+let faqSearchQuery = '';
+
+window.openFaq = function() {
+  trackEvent('faq_open', {});
+  faqSearchQuery = '';
+  const searchEl = document.getElementById('faqSearch');
+  if (searchEl) {
+    searchEl.value = '';
+    searchEl.oninput = (e) => {
+      faqSearchQuery = e.target.value.toLowerCase().trim();
+      renderFaqList();
+    };
+  }
+  renderFaqList();
+  const overlay = document.getElementById('faqOverlay');
+  if (overlay) overlay.classList.add('active');
+};
+
+window.closeFaq = function() {
+  const overlay = document.getElementById('faqOverlay');
+  if (overlay) overlay.classList.remove('active');
+};
+
+window.toggleFaqItem = function(idx) {
+  const item = document.getElementById('faq-item-' + idx);
+  if (!item) return;
+  const wasOpen = item.classList.contains('open');
+  // закрываем все, открываем выбранный (accordion behavior)
+  document.querySelectorAll('.faq-item').forEach(el => el.classList.remove('open'));
+  if (!wasOpen) {
+    item.classList.add('open');
+    trackEvent('faq_question_open', { idx });
+  }
+};
+
+window.faqStartTour = function() {
+  trackEvent('faq_tour_start', {});
+  window.closeFaq();
+  window.tourShowWelcome();
+};
+
+function renderFaqList() {
+  const root = document.getElementById('faqList');
+  if (!root) return;
+  const items = FAQ_DATA[currentLang] || FAQ_DATA.ru;
+  const q = faqSearchQuery;
+  const filtered = q
+    ? items.filter(it => (it.q + ' ' + it.a + ' ' + it.cat).toLowerCase().includes(q))
+    : items;
+
+  if (!filtered.length) {
+    root.innerHTML = `<div class="faq-empty">${t('faqEmpty')}</div>`;
+    return;
+  }
+
+  root.innerHTML = filtered.map((it, idx) => `
+    <div class="faq-item" id="faq-item-${idx}">
+      <button class="faq-q" onclick="toggleFaqItem(${idx})">
+        <span><span class="faq-cat">${escapeHtml(it.cat)}</span>${escapeHtml(it.q)}</span>
+      </button>
+      <div class="faq-a">${it.a}</div>
+    </div>
+  `).join('');
+}
 
 // ============================================================
 // FAKE PRODUCTS (для демо) — реалистичный набор по проектам.

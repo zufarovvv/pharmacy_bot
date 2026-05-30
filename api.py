@@ -294,6 +294,9 @@ ALLOWED_EVENT_TYPES = {
     'tour_started',
     'tour_finished',
     'tour_skipped',
+    'faq_open',
+    'faq_question_open',
+    'faq_tour_start',
 }
 
 
