@@ -118,6 +118,18 @@ const LANG = {
     pharmPartner: '✓ Партнёр DATFO',
     pctLabel: 'квартал',
     loaderHint: 'Загружаем данные...',
+    bizHeroCanGet: 'МОЖНО ЗАБРАТЬ',
+    bizHeroCanGetSub: 'до конца квартала',
+    bizHeroClosed: 'ПЛАН ЗАКРЫТ',
+    bizHeroClosedSub: 'перевыполните для доп. бонуса',
+    bizHeroInProgress: 'ОСТАЛОСЬ ДО ПЛАНА',
+    bizHeroInProgressSub: 'докрутите до 100% за квартал',
+    bizHeroOnTrack: 'ПОТЕНЦИАЛ КВАРТАЛА',
+    bizHeroOnTrackSub: 'максимум при 100% плана',
+    bizSecEarned: 'ЗАРАБОТАЛИ',
+    bizSecRevenue: 'ВЫРУЧКА Q1',
+    bizSecPotential: 'ДОП. БОНУС',
+    bizSecRevenueShort: 'ВЫРУЧКА',
     promoEyebrow: 'УПУЩЕННАЯ ВЫГОДА',
     promoCtaText: 'Связаться с менеджером',
     promoSkip: 'Не сейчас',
@@ -305,6 +317,18 @@ const LANG = {
     pharmPartner: '✓ DATFO sherigi',
     pctLabel: 'chorak',
     loaderHint: 'Yuklanmoqda...',
+    bizHeroCanGet: 'OLISH MUMKIN',
+    bizHeroCanGetSub: 'chorak oxirigacha',
+    bizHeroClosed: 'REJA YOPILDI',
+    bizHeroClosedSub: "Qo'shimcha bonus uchun ortiqcha bajaring",
+    bizHeroInProgress: 'REJAGACHA QOLDI',
+    bizHeroInProgressSub: 'Chorakda 100% ga chiqing',
+    bizHeroOnTrack: 'CHORAK POTENSIALI',
+    bizHeroOnTrackSub: '100% reja bilan maksimum',
+    bizSecEarned: 'TOPILGAN',
+    bizSecRevenue: "TUSHUM Q1",
+    bizSecPotential: "QO'SH. BONUS",
+    bizSecRevenueShort: 'TUSHUM',
     promoEyebrow: 'BOY BERILGAN FOYDA',
     promoCtaText: "Menejer bilan bog'lanish",
     promoSkip: 'Hozir emas',
@@ -1130,29 +1154,89 @@ function renderPharmacy(pharm, d) {
 }
 
 function renderIncome(d) {
-  const amount = d.income_quarter || (d.totals && d.totals.total_bonus) || '—';
-  setText('#incomeAmount', amount);
+  renderBizHero(d);
+}
 
-  // История по месяцам внутри квартала — реальный факт (выручка), что аптека пробила.
-  // Для прошлых кварталов пока показываем "—" — данных нет (нужны от менеджеров).
-  const months = (d.totals && d.totals.months) || d.months || {};
-  const order = [
-    ['january',  t('monthJanShort')],
-    ['february', t('monthFebShort')],
-    ['march',    t('monthMarShort')],
-  ];
-  const root = document.getElementById('incomeHistory');
-  if (root) {
-    root.innerHTML = order.map(([k, label]) => {
-      const m = months[k] || {};
-      const fact = m.fact || '—';
-      const cls = fact === '—' || fact === '0' ? 'muted' : '';
-      return `
-        <div class="income-history-item">
-          <div class="income-history-month">${label}</div>
-          <div class="income-history-val ${cls}">${escapeHtml(fact)}</div>
-        </div>`;
-    }).join('');
+function renderBizHero(d) {
+  const bonuses = d.bonuses || {};
+  const totals = d.totals || {};
+  const potential = parseMoney((bonuses.potential && bonuses.potential.amount) || '');
+  const accrued   = parseMoney((bonuses.accrued   && bonuses.accrued.amount)   || '');
+  const lost = Math.max(0, potential - accrued);
+  const quarterPct = totals.quarter_percent != null ? Number(totals.quarter_percent) : null;
+  const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
+
+  // Сумма выручки квартала из фактов месяцев
+  const months = totals.months || d.months || {};
+  let revenue = 0;
+  ['january', 'february', 'march'].forEach(m => {
+    revenue += parseMoney((months[m] && months[m].fact) || '0');
+  });
+
+  // === HERO === — что показываем в зависимости от ситуации
+  let heroLabel, heroAmount, heroSub, heroClass, heroAmountClass = '';
+
+  if (quarterPct != null && quarterPct >= 100) {
+    // План закрыт — поздравляем + давим на перевыполнение
+    heroClass  = 'success';
+    heroLabel  = t('bizHeroClosed');
+    heroAmount = quarterPct + '%';
+    heroSub    = t('bizHeroClosedSub');
+  } else if (lost > 0) {
+    // Есть упущенные деньги — главный триггер
+    heroClass  = quarterPct != null && quarterPct < 50 ? 'danger' : 'warning';
+    heroLabel  = t('bizHeroCanGet');
+    heroAmount = formatMoney(lost) + ' ' + moneyLabel;
+    heroSub    = t('bizHeroCanGetSub');
+    if (lost >= 10000000) heroAmountClass = 'medium';
+  } else if (quarterPct != null) {
+    // В работе, без упущенных денег — показываем сколько до 100%
+    heroClass  = 'warning';
+    heroLabel  = t('bizHeroInProgress');
+    heroAmount = (100 - quarterPct) + '%';
+    heroSub    = t('bizHeroInProgressSub');
+  } else {
+    // Нет данных — показываем потенциал
+    heroClass  = 'success';
+    heroLabel  = t('bizHeroOnTrack');
+    heroAmount = formatMoney(potential) + ' ' + moneyLabel;
+    heroSub    = t('bizHeroOnTrackSub');
+    if (potential >= 10000000) heroAmountClass = 'medium';
+  }
+
+  const heroEl = document.getElementById('bizHero');
+  if (heroEl) {
+    heroEl.className = 'biz-hero ' + heroClass;
+    heroEl.innerHTML = `
+      <div class="biz-hero-label">${heroLabel}</div>
+      <div class="biz-hero-amount ${heroAmountClass}">${heroAmount}</div>
+      <div class="biz-hero-sub">${heroSub}</div>
+    `;
+  }
+
+  // === SECONDARY === — 2 карточки: что есть + потенциал/выручка
+  const secEl = document.getElementById('bizSecondary');
+  if (secEl) {
+    let secondCard;
+    if (quarterPct != null && quarterPct >= 100) {
+      // Если план закрыт — справа показываем доп. потенциал (если есть)
+      secondCard = lost > 0
+        ? { label: t('bizSecPotential'), val: '+' + formatMoney(lost) + ' ' + moneyLabel, cls: 'amber' }
+        : { label: t('bizSecRevenue'),    val: formatMoney(revenue) + ' ' + moneyLabel,    cls: '' };
+    } else {
+      secondCard = { label: t('bizSecRevenue'), val: formatMoney(revenue) + ' ' + moneyLabel, cls: '' };
+    }
+
+    secEl.innerHTML = `
+      <div class="biz-sec-card">
+        <div class="biz-sec-label">${t('bizSecEarned')}</div>
+        <div class="biz-sec-val green">${formatMoney(accrued)} ${moneyLabel}</div>
+      </div>
+      <div class="biz-sec-card">
+        <div class="biz-sec-label">${secondCard.label}</div>
+        <div class="biz-sec-val ${secondCard.cls}">${secondCard.val}</div>
+      </div>
+    `;
   }
 }
 
