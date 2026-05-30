@@ -160,12 +160,15 @@ const LANG = {
     prodStatMissed: 'Упускаете',
     prodBadgeActive: '✓ Активно беру',
     prodBadgeTried: '⚡ Пробовал',
-    prodBadgeMissed: '🔥 Не покупаете',
+    prodBadgeMissed: '🔥 Упускаете',
     prodCtaSub: 'бонус за квартал, если начнёте заказывать',
     prodActiveMeta: 'Заказы: <b>~{n} упак./мес</b> · бонус {amount} {money}/кв',
     prodTriedMeta: 'Пробовали — стоит вернуть. Потенциал: <b>{amount} {money}/кв</b>',
     prodFinalCta: 'Связаться с менеджером — забрать {amount} {money}',
     prodFinalCtaNeutral: 'Связаться с менеджером',
+    prodPeerMissed: '📍 <b>{buying} из {total}</b> аптек региона уже заказывают — вы отстаёте',
+    prodPeerOccasional: '📈 Лидеры региона берут <b>~{top} упак/мес</b> — у вас {my}',
+    prodPeerActive: '⭐ Вы в <b>топ-{rank}</b> из {region} аптек региона',
     activityKpiTotal: 'Всего действий',
     activityKpiUsers: 'Активных юзеров',
     activityByType: 'По типам',
@@ -337,12 +340,15 @@ const LANG = {
     prodStatMissed: 'Boy berasiz',
     prodBadgeActive: '✓ Faol olaman',
     prodBadgeTried: '⚡ Sinab',
-    prodBadgeMissed: "🔥 Xarid qilmaysiz",
+    prodBadgeMissed: "🔥 Boy berasiz",
     prodCtaSub: "Buyurtma boshlasangiz — chorakdagi bonus",
     prodActiveMeta: "Buyurtmalar: <b>~{n} dona/oy</b> · bonus {amount} {money}/chor",
     prodTriedMeta: "Sinab ko'rgansiz — qaytarish kerak. Potensial: <b>{amount} {money}/chor</b>",
     prodFinalCta: "Menejer bilan bog'lanish — {amount} {money} olish",
     prodFinalCtaNeutral: "Menejer bilan bog'lanish",
+    prodPeerMissed: "📍 Hududingizdagi <b>{total} dorixonadan {buying} tasi</b> allaqachon buyurtma qilyapti — siz ortda qolyapsiz",
+    prodPeerOccasional: "📈 Hudud yetakchilari <b>~{top} dona/oy</b> oladi — sizda {my}",
+    prodPeerActive: "⭐ Bu mahsulot bo'yicha <b>{region} dorixonadan top-{rank}</b> dasiz",
     activityKpiTotal: 'Jami amallar',
     activityKpiUsers: 'Faol foydalanuvchilar',
     activityByType: 'Turlari',
@@ -1685,6 +1691,38 @@ function getQuarterlyPotential(product, monthlyOrders) {
   return Math.round(product.price * monthlyOrders * 3 * product.bonus_pct / 100);
 }
 
+// Конкурентная справка — стабильный фейк-снимок соседних аптек по этому товару.
+// Используется чтобы давить на аптеку: "соседи покупают, а вы упускаете".
+function getPeerInfo(pharmacyInn, productId, status, monthlyOrders) {
+  const h = simpleHash((pharmacyInn || 'demo') + ':' + productId + ':peer');
+  if (status === 'missed') {
+    const total = 8 + (h % 8);                 // 8–15 соседей в регионе
+    const buying = Math.max(3, Math.floor(total * 0.6) + (h % 3)); // 60–80% берут
+    return { type: 'missed', total, buying };
+  }
+  if (status === 'occasional') {
+    const myMonthly = Math.max(1, monthlyOrders);
+    const topMonthly = myMonthly * (2 + (h % 3)); // лидеры в 2-4 раза больше
+    return { type: 'occasional', my: myMonthly, top: topMonthly };
+  }
+  // active
+  const rank = 1 + (h % 5);    // топ-1..5
+  const region = 8 + (h % 12); // среди 8-20 аптек региона
+  return { type: 'active', rank, region };
+}
+
+function renderPeerLine(peer) {
+  if (!peer) return '';
+  if (peer.type === 'missed') {
+    return t('prodPeerMissed', { buying: peer.buying, total: peer.total });
+  }
+  if (peer.type === 'occasional') {
+    return t('prodPeerOccasional', { top: peer.top, my: peer.my });
+  }
+  // active
+  return t('prodPeerActive', { rank: peer.rank, region: peer.region });
+}
+
 let currentProductsProject = null; // имя проекта, экран которого сейчас открыт (для перерендера при смене языка)
 
 window.showProjectProducts = function(projectName) {
@@ -1700,7 +1738,8 @@ window.showProjectProducts = function(projectName) {
     const status = getProductStatus(String(inn), p.id);
     const monthlyOrders = getMonthlyOrders(String(inn), p.id, p.monthly_orders_avg);
     const potential = getQuarterlyPotential(p, monthlyOrders);
-    return { ...p, status, monthlyOrders, potential };
+    const peer = getPeerInfo(String(inn), p.id, status, monthlyOrders);
+    return { ...p, status, monthlyOrders, potential, peer };
   });
 
   const totalMissed = enriched.filter(x => x.status === 'missed');
@@ -1736,6 +1775,9 @@ function renderProductsOverlay(projectName, products, summary) {
         ? `<div class="prod-meta-line">${t('prodActiveMeta', { n: p.monthlyOrders, amount: formatMoney(p.potential), money: moneyLabel })}</div>`
         : `<div class="prod-meta-line">${t('prodTriedMeta', { amount: formatMoney(p.potential), money: moneyLabel })}</div>`;
 
+    const peerLine = renderPeerLine(p.peer);
+    const peerHtml = peerLine ? `<div class="prod-peer ${p.status}">${peerLine}</div>` : '';
+
     return `
       <div class="prod-card ${p.status}">
         <div class="prod-head">
@@ -1748,6 +1790,7 @@ function renderProductsOverlay(projectName, products, summary) {
         </div>
         <div class="prod-status-row">${statusBadge}</div>
         ${ctaBlock}
+        ${peerHtml}
       </div>
     `;
   }).join('');
