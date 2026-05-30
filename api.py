@@ -8,6 +8,7 @@
   1) Telegram WebApp initData (HMAC-SHA256 с BOT_TOKEN) — основной способ
   2) ?tg_id=... в query — дев-режим (отключается флагом ALLOW_QUERY_TG_ID=0)
 """
+import asyncio
 import json
 import logging
 import os
@@ -21,11 +22,14 @@ from database import (
     get_user_data, get_pharmacies_by_tg_id, get_all_pharmacies_extended,
     log_event, get_event_stats,
 )
+from dashboard_sync import get_knowledge_cache
 
 log = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv('BOT_TOKEN', '')
 ALLOW_QUERY_TG_ID = os.getenv('ALLOW_QUERY_TG_ID', '0') == '1'
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+ANTHROPIC_MODEL = os.getenv('ANTHROPIC_MODEL', 'claude-haiku-4-5')
 WEBAPP_DIR = Path(__file__).parent / 'webapp'
 
 
@@ -297,6 +301,7 @@ ALLOWED_EVENT_TYPES = {
     'faq_open',
     'faq_question_open',
     'faq_tour_start',
+    'ai_ask',
 }
 
 
@@ -329,6 +334,128 @@ async def handle_events(request: web.Request):
         return web.json_response({'ok': False}, status=500)
 
     return web.json_response({'ok': True})
+
+
+async def handle_ai_ask(request: web.Request):
+    """
+    AI-ассистент. Принимает вопрос аптеки, отвечает с учётом её данных + базы знаний.
+
+    Body: {"question": "..."}
+    Response: {"answer": "...", "model": "...", "config": false} — если ключ не задан
+    """
+    tg_id, _ = await resolve_tg_id(request)
+    if not tg_id:
+        return web.json_response({'error': 'unauthorized'}, status=401)
+
+    user = await get_user_data(tg_id)
+    if not user or user['role'] == 'ghost':
+        return web.json_response({'error': 'access_denied'}, status=403)
+
+    if not ANTHROPIC_API_KEY:
+        return web.json_response({
+            'error': 'ai_disabled',
+            'message': 'AI-ассистент не настроен. Добавьте ANTHROPIC_API_KEY в .env',
+        }, status=503)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'error': 'bad_json'}, status=400)
+
+    question = (body.get('question') or '').strip()
+    if not question:
+        return web.json_response({'error': 'empty_question'}, status=400)
+    if len(question) > 1000:
+        return web.json_response({'error': 'too_long'}, status=400)
+
+    # Контекст аптеки (если есть)
+    pharmacy_context = ''
+    pharmacies = await get_pharmacies_by_tg_id(tg_id)
+    if pharmacies:
+        p = pharmacies[0]
+        d_raw = p.get('dashboard_data') if isinstance(p, dict) else p['dashboard_data']
+        if isinstance(d_raw, str):
+            try:
+                d = json.loads(d_raw)
+            except json.JSONDecodeError:
+                d = {}
+        else:
+            d = d_raw or {}
+        totals = d.get('totals') or {}
+        bonuses = d.get('bonuses') or {}
+        pharmacy_context = (
+            f"Аптека: {p['pharmacy_name']} (ИНН {p['inn']})\n"
+            f"Регион: {d.get('region', '—')} / {d.get('district', '—')}\n"
+            f"Категория: {d.get('category', '—')}\n"
+            f"Менеджер: {d.get('manager', 'не назначен')}\n"
+            f"Квартал: {totals.get('quarter_percent', '?')}% от плана\n"
+            f"Заработано бонуса: {totals.get('total_bonus', '?')} сум\n"
+            f"Потенциал: {(bonuses.get('potential') or {}).get('amount', '—')}\n"
+            f"Активных проектов: {len(d.get('projects', []))}\n"
+        )
+
+    # База знаний (из листа «База знаний»)
+    kb = get_knowledge_cache()
+    if kb:
+        kb_text = "\n\n".join([
+            f"[{item.get('cat') or 'Общее'}] Вопрос: {item['q']}\nОтвет: {item['a']}"
+            for item in kb
+        ])
+    else:
+        kb_text = "(база знаний пуста — отвечай только из своих общих знаний и контекста аптеки)"
+
+    lang = user['language'] or 'ru'
+    response_lang_instruction = 'Отвечай на русском' if lang == 'ru' else "O'zbek tilida javob ber"
+
+    system_prompt = (
+        "Ты — AI-ассистент DATFO, платформы для бизнес-аналитики аптек. "
+        "Помогаешь владельцам и руководителям аптек разобраться в их данных и принять решение. "
+        f"{response_lang_instruction}. Будь кратким, по делу, как бизнес-консультант. "
+        "Не используй медицинскую терминологию — твоя аудитория предприниматели.\n\n"
+        "Используй данные аптеки и базу знаний ниже. Если на вопрос нет ответа — честно скажи "
+        "и предложи связаться с менеджером.\n\n"
+        f"=== ДАННЫЕ АПТЕКИ ===\n{pharmacy_context or '(аптека не привязана к этому Telegram)'}\n\n"
+        f"=== БАЗА ЗНАНИЙ ===\n{kb_text}"
+    )
+
+    # Anthropic SDK работает синхронно — оборачиваем в thread executor
+    import anthropic
+    loop = asyncio.get_running_loop()
+
+    def _call_claude():
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        return client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=500,
+            system=[
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},  # кешируем системный промпт
+                }
+            ],
+            messages=[{"role": "user", "content": question}],
+        )
+
+    try:
+        resp = await loop.run_in_executor(None, _call_claude)
+        answer = resp.content[0].text if resp.content else ''
+    except Exception as e:
+        log.warning(f"ai_ask failed: {type(e).__name__}: {e}")
+        return web.json_response({'error': 'ai_failed', 'message': str(e)}, status=500)
+
+    # Лог события (для аналитики)
+    try:
+        inn = pharmacies[0]['inn'] if pharmacies else None
+        await log_event(tg_id, 'ai_ask', pharmacy_inn=inn,
+                        payload={'q_len': len(question), 'a_len': len(answer)})
+    except Exception:
+        pass
+
+    return web.json_response({
+        'answer': answer,
+        'model': ANTHROPIC_MODEL,
+    })
 
 
 async def handle_admin_stats(request: web.Request):
@@ -392,6 +519,7 @@ def create_app() -> web.Application:
     app.router.add_get('/api/health', handle_health)
     app.router.add_get('/api/pharmacy/{inn}', handle_pharmacy_full)
     app.router.add_post('/api/events', handle_events)
+    app.router.add_post('/api/ai/ask', handle_ai_ask)
     app.router.add_get('/api/admin/stats', handle_admin_stats)
 
     # Web App — раздаём всю папку webapp/ как статику; корень → index.html

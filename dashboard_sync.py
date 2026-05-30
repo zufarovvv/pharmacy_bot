@@ -321,6 +321,17 @@ TG_IDS_SHEET_NAME = 'Доступы'
 # Регион опционален.
 MANAGERS_SHEET_NAME = 'Менеджеры'
 
+# Лист с базой знаний для AI-ассистента. Колонки распознаются по заголовку:
+#   Категория | Вопрос | Ответ | Активно (опц., 'нет'/'no' — скрыть запись)
+# Менеджер заполняет руками. ИИ использует эту базу для ответов.
+KNOWLEDGE_SHEET_NAME = 'База знаний'
+
+# Текущая база знаний — обновляется при каждом синке, читается /api/ai/ask
+_KNOWLEDGE_CACHE = []
+
+def get_knowledge_cache():
+    return list(_KNOWLEDGE_CACHE)
+
 # Бонус % за проект (захардкожено по данным «Свод таб new», верхнего предела).
 # Для проектов не из списка — фолбэк 7%.
 # TODO: вынести в отдельный конфиг-лист в Google Sheets.
@@ -481,6 +492,55 @@ def _parse_managers_sheet(rows):
                 pass
 
         result[name.lower()] = info
+    return result
+
+
+def _parse_knowledge_sheet(rows):
+    """
+    Парсит лист 'База знаний'. Возвращает список {cat, q, a}.
+
+    Колонки ищем по заголовку (регистр не важен):
+      'категория' / 'category'
+      'вопрос'    / 'question'
+      'ответ'     / 'answer'
+      'активно'   / 'active' (опц.) — записи со значением 'нет'/'no'/'off' пропускаются
+    """
+    if not rows or len(rows) < 2:
+        return []
+
+    header = rows[0]
+    col = {}
+    for j, c in enumerate(header):
+        n = _norm(c)
+        if 'категор' in n or 'category' in n: col['cat'] = j
+        elif 'вопрос' in n or 'question' in n: col['q'] = j
+        elif 'ответ' in n or 'answer' in n: col['a'] = j
+        elif 'актив' in n or 'active' in n: col['active'] = j
+
+    if 'q' not in col or 'a' not in col:
+        print("⚠️ [База знаний] не нашёл колонки 'Вопрос' и/или 'Ответ' в первой строке")
+        return []
+
+    result = []
+    for row in rows[1:]:
+        if not row:
+            continue
+        if len(row) <= col['q']:
+            continue
+        q = str(row[col['q']] or '').strip()
+        a_val = row[col['a']] if col['a'] < len(row) else ''
+        a = str(a_val or '').strip()
+        if not q or not a:
+            continue
+        # active-чек
+        if 'active' in col and col['active'] < len(row):
+            av = str(row[col['active']] or '').strip().lower()
+            if av in ('нет', 'no', 'off', 'false', '0'):
+                continue
+        cat = ''
+        if 'cat' in col and col['cat'] < len(row):
+            cat = str(row[col['cat']] or '').strip()
+        result.append({'cat': cat, 'q': q, 'a': a})
     return result
 
 
@@ -825,6 +885,18 @@ def _read_all_sheets():
                         _merge_managers(results, mgr_map, source_label='DASH')
                     except Exception as e:
                         print(f"⚠️ [DASH] лист {MANAGERS_SHEET_NAME!r}: {type(e).__name__}: {e}")
+
+                # База знаний для AI-ассистента
+                kb_ws = next((ws for ws in wb.worksheets() if ws.title == KNOWLEDGE_SHEET_NAME), None)
+                if kb_ws:
+                    try:
+                        kb_rows = kb_ws.get('A1:D500', value_render_option='UNFORMATTED_VALUE')
+                        kb = _parse_knowledge_sheet(kb_rows)
+                        global _KNOWLEDGE_CACHE
+                        _KNOWLEDGE_CACHE = kb
+                        print(f"  ✓ {KNOWLEDGE_SHEET_NAME!r}: {len(kb)} записей")
+                    except Exception as e:
+                        print(f"⚠️ [DASH] лист {KNOWLEDGE_SHEET_NAME!r}: {type(e).__name__}: {e}")
                 return results
             print(f"⚠️ [DASH] лист {IIIQ_SHEET_NAME!r}: парсер не нашёл данных, пробуем старый формат")
         except Exception as e:

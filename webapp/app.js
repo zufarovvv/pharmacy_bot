@@ -135,6 +135,14 @@ const LANG = {
     faqSearch: 'Найти вопрос...',
     faqStartTour: '▶ Запустить ознакомительный тур',
     faqEmpty: 'Ничего не найдено по вашему запросу',
+    faqModeQuick: 'Быстрые ответы',
+    faqModeAi: '✦ Спросить AI',
+    aiWelcomeTitle: 'AI-ассистент DATFO',
+    aiWelcomeSub: 'Задавайте вопросы о ваших данных, бонусах, проектах. Отвечу с учётом вашей аптеки.',
+    aiInputPlaceholder: 'Задайте вопрос...',
+    aiErrorDisabled: 'AI-ассистент пока не настроен. Используйте «Быстрые ответы».',
+    aiErrorGeneric: 'Не удалось получить ответ. Попробуйте ещё раз через минуту.',
+    aiSuggestions: ['Сколько я заработал?', 'Что мне сейчас невыгодно?', 'Как закрыть план?', 'Что заказать сегодня?'],
     promoEyebrow: 'УПУЩЕННАЯ ВЫГОДА',
     promoCtaText: 'Связаться с менеджером',
     promoSkip: 'Не сейчас',
@@ -339,6 +347,14 @@ const LANG = {
     faqSearch: 'Savol topish...',
     faqStartTour: '▶ Tanishuv turini boshlash',
     faqEmpty: "So'rovingiz bo'yicha hech narsa topilmadi",
+    faqModeQuick: 'Tezkor javoblar',
+    faqModeAi: "✦ AI'dan so'rash",
+    aiWelcomeTitle: 'DATFO AI-yordamchisi',
+    aiWelcomeSub: "Ma'lumotlaringiz, bonus va loyihalar haqida savol bering. Dorixonangizni hisobga olib javob beraman.",
+    aiInputPlaceholder: 'Savol bering...',
+    aiErrorDisabled: "AI-yordamchi sozlanmagan. «Tezkor javoblar» dan foydalaning.",
+    aiErrorGeneric: "Javob olishning iloji bo'lmadi. Daqiqadan keyin qayta urinib ko'ring.",
+    aiSuggestions: ['Qancha topdim?', 'Hozir nima foydasiz?', 'Rejani qanday yopaman?', 'Bugun nima buyurtma qilay?'],
     promoEyebrow: 'BOY BERILGAN FOYDA',
     promoCtaText: "Menejer bilan bog'lanish",
     promoSkip: 'Hozir emas',
@@ -1757,6 +1773,9 @@ const FAQ_DATA = {
 
 let faqSearchQuery = '';
 
+let faqMode = 'quick'; // 'quick' | 'ai'
+let aiConversation = []; // история сообщений за сессию
+
 window.openFaq = function() {
   trackEvent('faq_open', {});
   faqSearchQuery = '';
@@ -1769,9 +1788,141 @@ window.openFaq = function() {
     };
   }
   renderFaqList();
+  renderAiSuggestions();
   const overlay = document.getElementById('faqOverlay');
   if (overlay) overlay.classList.add('active');
 };
+
+window.setFaqMode = function(mode) {
+  if (mode !== 'quick' && mode !== 'ai') return;
+  faqMode = mode;
+  document.querySelectorAll('.faq-mode-tab').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+  });
+  const quickV = document.getElementById('faqModeQuickView');
+  const aiV    = document.getElementById('faqModeAiView');
+  if (mode === 'ai') {
+    quickV.style.display = 'none';
+    aiV.style.display    = '';
+    setTimeout(() => { const i = document.getElementById('aiInput'); if (i) i.focus(); }, 100);
+  } else {
+    quickV.style.display = '';
+    aiV.style.display    = 'none';
+  }
+};
+
+function renderAiSuggestions() {
+  const root = document.getElementById('aiSuggestions');
+  if (!root) return;
+  // Подсказки показываем только пока чат пустой (нет переписки)
+  if (aiConversation.length > 0) { root.innerHTML = ''; return; }
+  const sugg = t('aiSuggestions');
+  if (!Array.isArray(sugg)) { root.innerHTML = ''; return; }
+  root.innerHTML = sugg.map(s => `
+    <button class="ai-suggestion" onclick="askAiSuggestion('${escapeHtml(s).replace(/'/g, "\\'")}')">${escapeHtml(s)}</button>
+  `).join('');
+}
+
+window.askAiSuggestion = function(text) {
+  const input = document.getElementById('aiInput');
+  if (input) input.value = text;
+  sendAiQuestion();
+};
+
+window.sendAiQuestion = async function() {
+  const input = document.getElementById('aiInput');
+  if (!input) return;
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+
+  // Если первый вопрос — убираем welcome-блок и подсказки
+  const chat = document.getElementById('aiChat');
+  if (aiConversation.length === 0) {
+    chat.innerHTML = '';
+    document.getElementById('aiSuggestions').innerHTML = '';
+  }
+
+  // Рендерим вопрос пользователя
+  aiConversation.push({ role: 'user', text: q });
+  appendAiMessage('user', q);
+
+  // Лоадер "печатает..."
+  const typingId = 'ai-typing-' + Date.now();
+  chat.insertAdjacentHTML('beforeend', `
+    <div class="ai-msg typing" id="${typingId}">
+      <span class="ai-typing-dots"><span></span><span></span><span></span></span>
+    </div>
+  `);
+  scrollAiChat();
+
+  // Запрос к API
+  const sendBtn = document.getElementById('aiSendBtn');
+  if (sendBtn) sendBtn.disabled = true;
+
+  try {
+    const initData = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || '';
+    const urlParams = new URLSearchParams(window.location.search);
+    const tgIdFromUrl = urlParams.get('tg_id');
+    const url = new URL(API_BASE + '/api/ai/ask');
+    if (initData) url.searchParams.set('init_data', initData);
+    else if (tgIdFromUrl) url.searchParams.set('tg_id', tgIdFromUrl);
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
+        ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
+      },
+      body: JSON.stringify({ question: q }),
+    });
+    const data = await res.json();
+
+    const typing = document.getElementById(typingId);
+    if (typing) typing.remove();
+
+    if (!res.ok) {
+      const msg = data.error === 'ai_disabled' ? t('aiErrorDisabled') : (data.message || t('aiErrorGeneric'));
+      appendAiMessage('error', msg);
+    } else if (data.answer) {
+      aiConversation.push({ role: 'assistant', text: data.answer });
+      appendAiMessage('assistant', data.answer);
+    } else {
+      appendAiMessage('error', t('aiErrorGeneric'));
+    }
+  } catch (e) {
+    const typing = document.getElementById(typingId);
+    if (typing) typing.remove();
+    appendAiMessage('error', t('aiErrorGeneric'));
+  } finally {
+    if (sendBtn) sendBtn.disabled = false;
+    scrollAiChat();
+  }
+};
+
+function appendAiMessage(role, text) {
+  const chat = document.getElementById('aiChat');
+  if (!chat) return;
+  const div = document.createElement('div');
+  div.className = 'ai-msg ' + role;
+  // assistant: безопасный markdown-light — **bold** и переносы строк
+  if (role === 'assistant') {
+    let html = escapeHtml(text);
+    html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    html = html.replace(/\n/g, '<br>');
+    div.innerHTML = html;
+  } else {
+    div.textContent = text;
+  }
+  chat.appendChild(div);
+  scrollAiChat();
+}
+
+function scrollAiChat() {
+  const sheet = document.querySelector('.faq-sheet');
+  if (sheet) sheet.scrollTop = sheet.scrollHeight;
+}
 
 window.closeFaq = function() {
   const overlay = document.getElementById('faqOverlay');

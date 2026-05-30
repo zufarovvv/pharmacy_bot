@@ -1050,6 +1050,156 @@ body {
   cursor: pointer;
 }
 
+/* ===== FAQ MODE TABS ===== */
+.faq-mode-tabs {
+  display: flex; gap: 4px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  padding: 4px;
+  margin: 0 16px 12px;
+}
+.faq-mode-tab {
+  flex: 1;
+  font-family: inherit; font-size: 13px; font-weight: 700;
+  background: transparent; color: var(--text-secondary);
+  border: none; cursor: pointer;
+  padding: 9px 12px; border-radius: 8px;
+  letter-spacing: -0.2px;
+}
+.faq-mode-tab.active {
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ===== AI CHAT ===== */
+.ai-chat {
+  padding: 8px 16px;
+  min-height: 280px;
+  display: flex; flex-direction: column;
+  gap: 10px;
+}
+.ai-welcome {
+  text-align: center;
+  padding: 30px 12px 20px;
+  color: var(--text-secondary);
+}
+.ai-welcome-icon {
+  font-size: 36px;
+  color: var(--primary);
+  margin-bottom: 8px;
+}
+.ai-welcome-title {
+  font-size: 17px; font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  letter-spacing: -0.3px;
+}
+.ai-welcome-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.ai-msg {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+.ai-msg.user {
+  background: var(--primary);
+  color: white;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+.ai-msg.assistant {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+.ai-msg.assistant b { font-weight: 700; }
+.ai-msg.error {
+  background: var(--danger-soft);
+  color: var(--danger-dark);
+  border: 1px solid var(--danger-soft);
+  align-self: flex-start;
+  font-size: 13px;
+}
+.ai-msg.typing {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  align-self: flex-start;
+  padding: 14px 18px;
+  border-bottom-left-radius: 4px;
+}
+.ai-typing-dots {
+  display: inline-flex; gap: 4px;
+}
+.ai-typing-dots span {
+  width: 6px; height: 6px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  animation: aiTyping 1.4s infinite ease-in-out;
+}
+.ai-typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.ai-typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes aiTyping {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+/* Подсказки-чипсы под чатом */
+.ai-suggestions {
+  padding: 4px 16px 8px;
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.ai-suggestion {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px; font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+}
+.ai-suggestion:hover { background: var(--primary-soft); color: var(--primary-dark); border-color: var(--primary-soft); }
+
+.ai-input-area {
+  padding: 12px 16px 16px;
+  display: flex; gap: 8px;
+  background: var(--bg-primary);
+  position: sticky; bottom: 0;
+  border-top: 1px solid var(--border);
+}
+.ai-input-area input {
+  flex: 1;
+  padding: 12px 14px;
+  font-family: inherit; font-size: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+}
+.ai-input-area input:focus { outline: none; border-color: var(--primary); }
+.ai-send-btn {
+  width: 44px; height: 44px;
+  background: var(--primary);
+  color: white;
+  border: none; border-radius: 50%;
+  font-size: 18px; font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ai-send-btn:disabled { background: var(--text-muted); cursor: not-allowed; }
+
 /* ===== PRODUCTS OVERLAY (карточка проекта) ===== */
 .prod-overlay {
   position: fixed; inset: 0;
@@ -1521,9 +1671,34 @@ body {
       <div class="faq-title" data-i18n="faqTitle">FAQ</div>
       <div class="faq-sub" data-i18n="faqSub">Частые вопросы</div>
     </div>
-    <input class="faq-search" type="text" id="faqSearch" data-i18n-placeholder="faqSearch" placeholder="Найти вопрос...">
-    <div class="faq-list" id="faqList"></div>
-    <button class="faq-tour-btn" onclick="faqStartTour()" data-i18n="faqStartTour">▶ Запустить ознакомительный тур</button>
+
+    <div class="faq-mode-tabs">
+      <button class="faq-mode-tab active" data-mode="quick" onclick="setFaqMode('quick')" data-i18n="faqModeQuick">Быстрые ответы</button>
+      <button class="faq-mode-tab" data-mode="ai" onclick="setFaqMode('ai')" data-i18n="faqModeAi">✦ Спросить AI</button>
+    </div>
+
+    <!-- РЕЖИМ 1: Быстрые ответы (статичный FAQ) -->
+    <div id="faqModeQuickView">
+      <input class="faq-search" type="text" id="faqSearch" data-i18n-placeholder="faqSearch" placeholder="Найти вопрос...">
+      <div class="faq-list" id="faqList"></div>
+      <button class="faq-tour-btn" onclick="faqStartTour()" data-i18n="faqStartTour">▶ Запустить ознакомительный тур</button>
+    </div>
+
+    <!-- РЕЖИМ 2: AI-чат -->
+    <div id="faqModeAiView" style="display:none;">
+      <div class="ai-chat" id="aiChat">
+        <div class="ai-welcome">
+          <div class="ai-welcome-icon">✦</div>
+          <div class="ai-welcome-title" data-i18n="aiWelcomeTitle">AI-ассистент DATFO</div>
+          <div class="ai-welcome-sub" data-i18n="aiWelcomeSub">Задавайте вопросы о ваших данных, бонусах, проектах. Отвечу с учётом вашей аптеки.</div>
+        </div>
+      </div>
+      <div class="ai-suggestions" id="aiSuggestions"></div>
+      <div class="ai-input-area">
+        <input type="text" id="aiInput" data-i18n-placeholder="aiInputPlaceholder" placeholder="Задайте вопрос..." onkeypress="if(event.key==='Enter') sendAiQuestion()">
+        <button class="ai-send-btn" onclick="sendAiQuestion()" id="aiSendBtn">→</button>
+      </div>
+    </div>
   </div>
 </div>
 
