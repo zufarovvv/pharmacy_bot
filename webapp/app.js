@@ -467,10 +467,19 @@ function renderDashboard(pharm) {
   currentPharm = pharm;
   currentPharmInn = pharm.inn || null;
   const d = pharm.dashboard || {};
+  const isAdmin = !!(window.userData && window.userData.is_admin);
+
   renderPharmacy(pharm, d);
-  renderAlertBar(d);
+
+  if (isAdmin) {
+    // Админ/суперадмин смотрит чужую аптеку для контроля — никаких CTA для аптек.
+    hidePharmacyTriggers();
+  } else {
+    renderAlertBar(d);
+    renderLostOpportunity(d);
+  }
+
   renderIncome(d);
-  renderLostOpportunity(d);
   renderStats(d.stats);
   renderQuarter(d.totals);
   renderDynamics(d.totals && d.totals.months ? d.totals.months : d.months);
@@ -479,8 +488,25 @@ function renderDashboard(pharm) {
 
   allProjects = Array.isArray(d.projects) ? d.projects : [];
   renderProjects();
-  renderStickyCta(d);
-  schedulePromo(d);
+
+  if (!isAdmin) {
+    renderStickyCta(d);
+    schedulePromo(d);
+  }
+}
+
+function hidePharmacyTriggers() {
+  // Прячем все продающие триггеры для админа: алерт-плашку, упущенную выгоду,
+  // sticky-кнопку. Промо-модалка не назначается (schedulePromo не вызывается).
+  const alertBar = document.getElementById('alertBar');
+  if (alertBar) alertBar.style.display = 'none';
+  const heroLost = document.getElementById('heroLost');
+  if (heroLost) heroLost.style.display = 'none';
+  const sticky = document.getElementById('stickyCta');
+  if (sticky) sticky.classList.remove('visible');
+  // На случай если промо уже на экране (быстрое переключение):
+  const promo = document.getElementById('promoOverlay');
+  if (promo) promo.classList.remove('active');
 }
 
 // ============================================================
@@ -1082,6 +1108,9 @@ function buildPromoContent(d) {
 let promoScenario = null;  // запоминаем сценарий, чтобы отправить с CTA/skip
 
 function showPromo(promo) {
+  // Доп. защита: не показываем CTA-промо админам, даже если таймер успел
+  // стартовать до того как роль была понятна.
+  if (window.userData && window.userData.is_admin) return;
   const overlay = document.getElementById('promoOverlay');
   if (!overlay) return;
   document.getElementById('promoIcon').textContent = promo.icon;
