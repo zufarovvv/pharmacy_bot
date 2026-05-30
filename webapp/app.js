@@ -2237,7 +2237,7 @@ function renderProductsOverlay(projectName, products, summary) {
 
   overlay.innerHTML = `
     <div class="prod-sheet">
-      <button class="prod-close" onclick="closeProducts()">×</button>
+      <div class="sheet-close-anchor"><button class="prod-close" onclick="closeProducts()">×</button></div>
       <div class="prod-sheet-head">
         <div class="prod-project-name">${escapeHtml(projectName)}</div>
         <div class="prod-project-sub">${t('prodSub', { n: products.length })}</div>

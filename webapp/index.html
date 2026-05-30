@@ -952,6 +952,17 @@ body {
   animation: prodSlide 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   padding: 0 0 30px;
 }
+/* Sticky якорь высотой 0 — крестик торчит из него и остаётся
+   в правом верхнем углу при любой прокрутке шторки. */
+.sheet-close-anchor {
+  position: sticky; top: 0;
+  height: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+.sheet-close-anchor > button {
+  pointer-events: auto;
+}
 .faq-close {
   position: absolute; top: 14px; right: 14px;
   background: var(--surface); border: none;
@@ -959,7 +970,6 @@ body {
   font-size: 18px; cursor: pointer;
   color: var(--text-secondary);
   box-shadow: var(--shadow);
-  z-index: 10;
 }
 .faq-header {
   padding: 24px 20px 16px;
@@ -1225,15 +1235,12 @@ body {
   to   { transform: translateY(0); }
 }
 .prod-close {
-  position: sticky; top: 12px; right: 12px;
-  float: right;
+  position: absolute; top: 14px; right: 14px;
   background: var(--surface); border: none;
   width: 36px; height: 36px; border-radius: 50%;
   font-size: 20px; cursor: pointer;
   color: var(--text-secondary);
-  margin: 12px 12px 0 0;
   box-shadow: var(--shadow);
-  z-index: 10;
 }
 .prod-sheet-head {
   padding: 8px 20px 4px;
@@ -1666,7 +1673,9 @@ body {
 <!-- ====== FAQ OVERLAY (клик по "?" внизу) ====== -->
 <div class="faq-overlay" id="faqOverlay">
   <div class="faq-sheet">
-    <button class="faq-close" onclick="closeFaq()">×</button>
+    <div class="sheet-close-anchor">
+      <button class="faq-close" onclick="closeFaq()">×</button>
+    </div>
     <div class="faq-header">
       <div class="faq-title" data-i18n="faqTitle">FAQ</div>
       <div class="faq-sub" data-i18n="faqSub">Частые вопросы</div>
