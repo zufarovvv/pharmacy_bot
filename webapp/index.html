@@ -999,10 +999,15 @@ body {
   font-size: 22px; font-weight: 700;
   box-shadow: 0 8px 24px -6px rgba(14,116,144,0.5);
   z-index: 90;
-  transition: transform 0.15s;
+  transition: transform 0.15s, opacity 0.4s, visibility 0.4s;
 }
 .faq-fab:hover { transform: scale(1.05); }
 .faq-fab:active { transform: scale(0.95); }
+.faq-fab.faded {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
 
 /* ===== FAQ OVERLAY ===== */
 .faq-overlay {
@@ -1658,7 +1663,7 @@ body {
   <section class="stats-grid">
     <div class="stat-box stat-completed">
       <div class="stat-number" id="statCompleted">0</div>
-      <div class="stat-label" data-i18n="statsWin">Выполнено</div>
+      <div class="stat-label" data-i18n="statsWin">Закрыто</div>
     </div>
     <div class="stat-box stat-partial">
       <div class="stat-number" id="statPartial">0</div>
@@ -1666,7 +1671,7 @@ body {
     </div>
     <div class="stat-box stat-critical">
       <div class="stat-number" id="statCritical">0</div>
-      <div class="stat-label" data-i18n="statsRisk">Риск</div>
+      <div class="stat-label" data-i18n="statsRisk">Отстают</div>
     </div>
   </section>
 

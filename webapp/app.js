@@ -39,12 +39,12 @@ const LANG = {
     lostText_high: 'План выполнен. Перевыполнение даёт <b>дополнительный бонус</b> — обсудите с менеджером, как закрыть квартал с максимальной выплатой.',
     spGold: 'Аптеки категории <b>Gold</b> в среднем выполняют план на <b>112%</b>. Сохраняйте темп — и оставайтесь среди лидеров.',
     spSilver: 'Аптеки <b>Silver</b>, перешедшие в <b>Gold</b>, в среднем зарабатывают в <b>2,3 раза больше</b>. Следующая ступень доступна вам.',
-    statsWin: 'Выполнено',
-    statsWinDesc: 'бонус начислен',
+    statsWin: 'Закрыто',
+    statsWinDesc: 'план выполнен',
     statsAlmost: 'В работе',
     statsAlmostDesc: 'ускорить',
-    statsRisk: 'Требует внимания',
-    statsRiskDesc: 'риск потери бонуса',
+    statsRisk: 'Отстают',
+    statsRiskDesc: 'нужно действовать',
     quarterTitle: 'Прогресс квартала',
     quarterSub: 'Чем выше процент — тем выше выплата',
     quarterPlan: 'План квартала',
@@ -116,20 +116,20 @@ const LANG = {
     pharmInnLabel: 'ИНН:',
     pharmManager: 'Менеджер:',
     pharmPartner: '✓ Партнёр DATFO',
-    pctLabel: 'квартал',
+    pctLabel: 'из плана',
     loaderHint: 'Загружаем данные...',
-    bizHeroCanGet: 'МОЖНО ЗАБРАТЬ',
+    bizHeroCanGet: 'МОЖНО ДОЗАРАБОТАТЬ',
     bizHeroCanGetSub: 'до конца квартала',
-    bizHeroClosed: 'ПЛАН ЗАКРЫТ',
-    bizHeroClosedSub: 'перевыполните для доп. бонуса',
-    bizHeroInProgress: 'ОСТАЛОСЬ ДО ПЛАНА',
-    bizHeroInProgressSub: 'докрутите до 100% за квартал',
-    bizHeroOnTrack: 'ПОТЕНЦИАЛ КВАРТАЛА',
-    bizHeroOnTrackSub: 'максимум при 100% плана',
-    bizSecEarned: 'ЗАРАБОТАЛИ',
-    bizSecRevenue: 'ВЫРУЧКА Q1',
-    bizSecPotential: 'ДОП. БОНУС',
-    bizSecRevenueShort: 'ВЫРУЧКА',
+    bizHeroClosed: 'ПЛАН ВЫПОЛНЕН',
+    bizHeroClosedSub: 'продолжайте — получите дополнительный бонус',
+    bizHeroInProgress: 'ДО ВЫПОЛНЕНИЯ ПЛАНА',
+    bizHeroInProgressSub: 'осталось до конца квартала',
+    bizHeroOnTrack: 'ВАШ ПОТЕНЦИАЛ',
+    bizHeroOnTrackSub: 'при выполнении плана на 100%',
+    bizSecEarned: 'УЖЕ ЗАРАБОТАЛИ',
+    bizSecRevenue: 'ПРОДАЖИ ЗА КВАРТАЛ',
+    bizSecPotential: 'ДОПОЛНИТЕЛЬНЫЙ БОНУС',
+    bizSecRevenueShort: 'ПРОДАЖИ',
     adviceTitle: 'Совет от FOM',
     adviceSectionTitle: 'РЕКОМЕНДАЦИИ',
     adviceCompetitorTitle: 'Замените {comp} на {prod}',
@@ -264,12 +264,12 @@ const LANG = {
     lostText_high: "Reja bajarildi. Ortiqcha bajarish <b>qo'shimcha bonus</b> beradi — menejer bilan chorakni maksimal to'lov bilan yopish bo'yicha gaplashing.",
     spGold: '<b>Gold</b> toifasidagi dorixonalar rejani o\'rtacha <b>112%</b> bajaradi. Tempni saqlang — yetakchilar orasida qoling.',
     spSilver: "<b>Silver</b>dan <b>Gold</b>ga o'tgan dorixonalar o'rtacha <b>2,3 marta ko'p</b> daromad oladi. Keyingi bosqich sizga ochiq.",
-    statsWin: "Bajarildi",
-    statsWinDesc: 'bonus hisoblandi',
+    statsWin: "Yopildi",
+    statsWinDesc: 'reja bajarildi',
     statsAlmost: 'Ishda',
     statsAlmostDesc: 'tezlashtirish',
-    statsRisk: "E'tibor talab qiladi",
-    statsRiskDesc: "bonus yo'qotish xavfi",
+    statsRisk: "Ortda",
+    statsRiskDesc: "harakat kerak",
     quarterTitle: 'Chorak yutug\'i',
     quarterSub: "Foiz qancha yuqori — to'lov shuncha katta",
     quarterPlan: 'Chorak rejasi',
@@ -341,20 +341,20 @@ const LANG = {
     pharmInnLabel: 'INN:',
     pharmManager: 'Menejer:',
     pharmPartner: '✓ DATFO sherigi',
-    pctLabel: 'chorak',
+    pctLabel: 'rejadan',
     loaderHint: 'Yuklanmoqda...',
-    bizHeroCanGet: 'OLISH MUMKIN',
+    bizHeroCanGet: "QO'SHIMCHA TOPISH MUMKIN",
     bizHeroCanGetSub: 'chorak oxirigacha',
-    bizHeroClosed: 'REJA YOPILDI',
-    bizHeroClosedSub: "Qo'shimcha bonus uchun ortiqcha bajaring",
-    bizHeroInProgress: 'REJAGACHA QOLDI',
-    bizHeroInProgressSub: 'Chorakda 100% ga chiqing',
-    bizHeroOnTrack: 'CHORAK POTENSIALI',
-    bizHeroOnTrackSub: '100% reja bilan maksimum',
-    bizSecEarned: 'TOPILGAN',
-    bizSecRevenue: "TUSHUM Q1",
-    bizSecPotential: "QO'SH. BONUS",
-    bizSecRevenueShort: 'TUSHUM',
+    bizHeroClosed: 'REJA BAJARILDI',
+    bizHeroClosedSub: "Davom eting — qo'shimcha bonus oling",
+    bizHeroInProgress: 'REJA BAJARILISHIGACHA',
+    bizHeroInProgressSub: 'chorak oxirigacha qoldi',
+    bizHeroOnTrack: 'SIZNING POTENSIALINGIZ',
+    bizHeroOnTrackSub: '100% reja bajarilganda',
+    bizSecEarned: 'ALLAQACHON TOPDINGIZ',
+    bizSecRevenue: "CHORAK SOTUVI",
+    bizSecPotential: "QO'SHIMCHA BONUS",
+    bizSecRevenueShort: 'SOTUV',
     adviceTitle: 'FOM tavsiyasi',
     adviceSectionTitle: 'TAVSIYALAR',
     adviceCompetitorTitle: '{comp} ni {prod} ga almashtiring',
@@ -521,6 +521,7 @@ function detectLang() {
 async function main() {
   currentLang = detectLang();
   applyLang();
+  setupFaqAutoHide();
   document.getElementById('projSearch').addEventListener('input', e => {
     currentSearch = e.target.value.toLowerCase();
     renderProjects();
@@ -632,7 +633,10 @@ function renderDashboard(pharm) {
     hidePharmacyTriggers();
   } else {
     renderAlertBar(d);
-    renderLostOpportunity(d);
+    // renderLostOpportunity() убран — bizHero уже показывает ту же сумму.
+    // Чтобы не сломать предыдущий стейт, явно прячем блок.
+    const heroLost = document.getElementById('heroLost');
+    if (heroLost) heroLost.style.display = 'none';
   }
 
   renderIncome(d);
@@ -647,7 +651,9 @@ function renderDashboard(pharm) {
   renderAdvice(d, pharm.inn);
 
   if (!isAdmin) {
-    renderStickyCta(d);
+    // renderStickyCta() убран — дублирует bizHero и конфликтует с FAQ-кнопкой.
+    const sticky = document.getElementById('stickyCta');
+    if (sticky) sticky.classList.remove('visible');
     schedulePromo(d);
   }
 }
@@ -1319,8 +1325,8 @@ function renderAlertBar(d) {
     bar.style.display = '';
     icon.textContent = '🔴';
     txt.innerHTML = (currentLang === 'uz'
-      ? `<b>${critical}</b> ta loyiha xavf zonasida — to'g'rilash kerak`
-      : `<b>${critical}</b> ${critical === 1 ? 'проект' : 'проекта'} в зоне риска — нужно срочно действовать`);
+      ? `<b>${critical}</b> ta loyihada ortda qolyapsiz — harakat kerak`
+      : `<b>${critical}</b> ${critical === 1 ? 'проект' : 'проекта'} отстаёт — нужно действовать`);
     currentAlertContext = 'risk';
   } else if (lost > 0) {
     bar.classList.add('warning');
@@ -1328,16 +1334,16 @@ function renderAlertBar(d) {
     icon.textContent = '⚡';
     const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
     txt.innerHTML = (currentLang === 'uz'
-      ? `Boy berilgan foyda: <b>${formatMoney(lost)} ${moneyLabel}</b>`
-      : `Упущено: <b>${formatMoney(lost)} ${moneyLabel}</b> — забрать`);
+      ? `Boy berasiz: <b>${formatMoney(lost)} ${moneyLabel}</b>`
+      : `Упускаете: <b>${formatMoney(lost)} ${moneyLabel}</b>`);
     currentAlertContext = 'lost';
   } else if (pct != null && Number(pct) >= 100) {
     bar.classList.add('success');
     bar.style.display = '';
     icon.textContent = '✓';
     txt.innerHTML = (currentLang === 'uz'
-      ? `Reja yopildi — chorakni <b>${pct}%</b>ga bajardingiz. Perevypolnenie qo'shimcha bonus beradi.`
-      : `План закрыт — <b>${pct}%</b>. Перевыполнение даёт дополнительный бонус.`);
+      ? `Reja bajarildi — <b>${pct}%</b>. Davom eting.`
+      : `План выполнен — <b>${pct}%</b>. Продолжайте темп.`);
     currentAlertContext = 'win';
   } else {
     bar.style.display = 'none';
@@ -1802,8 +1808,30 @@ let faqSearchQuery = '';
 
 let faqMode = 'quick'; // 'quick' | 'ai'
 let aiConversation = []; // история сообщений за сессию
+let faqAutoHideTimer = null;
+
+function setupFaqAutoHide() {
+  const fab = document.getElementById('faqFab');
+  if (!fab) return;
+  // Через 20 сек после открытия аппа — мягко скрываем кнопку.
+  faqAutoHideTimer = setTimeout(() => fab.classList.add('faded'), 20000);
+
+  // Если юзер скроллит вверх (ближе к шапке) — показываем снова.
+  // Если скроллит вниз / дальше работает с дашбордом — оставляем скрытой.
+  window.addEventListener('scroll', () => {
+    if (!fab) return;
+    if (window.scrollY < 80) {
+      fab.classList.remove('faded');
+    }
+  }, { passive: true });
+}
 
 window.openFaq = function() {
+  // Любой клик по кнопке отменяет автоскрытие и снимает класс
+  const fab = document.getElementById('faqFab');
+  if (fab) fab.classList.remove('faded');
+  if (faqAutoHideTimer) { clearTimeout(faqAutoHideTimer); faqAutoHideTimer = null; }
+
   trackEvent('faq_open', {});
   faqSearchQuery = '';
   const searchEl = document.getElementById('faqSearch');
