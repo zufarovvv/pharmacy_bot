@@ -302,6 +302,7 @@ ALLOWED_EVENT_TYPES = {
     'faq_question_open',
     'faq_tour_start',
     'ai_ask',
+    'advice_cta',
 }
 
 

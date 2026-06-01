@@ -130,6 +130,19 @@ const LANG = {
     bizSecRevenue: 'ВЫРУЧКА Q1',
     bizSecPotential: 'ДОП. БОНУС',
     bizSecRevenueShort: 'ВЫРУЧКА',
+    adviceTitle: 'Совет от FOM',
+    adviceSectionTitle: 'РЕКОМЕНДАЦИИ',
+    adviceCompetitorTitle: 'Замените {comp} на {prod}',
+    adviceCompetitorReason: 'Вы продаёте <b>{comp}</b> ({brand}) — это аналог <b>{prod}</b> ({project}). {reason}',
+    advicePlanTitle: 'Закройте план {project}',
+    advicePlanReason: 'Проект <b>{project}</b> выполнен на <b>{pct}%</b>. Закажите <b>{n} упак.</b> <b>{prod}</b> до конца квартала — закроете план и заберёте полный бонус.',
+    adviceMarginTitle: 'Высокая маржа на {prod}',
+    adviceMarginReason: '<b>{prod}</b> ({project}) даёт маржу <b>+{margin}%</b> — одну из самых высоких в портфеле. Увеличьте заказ — увеличите прибыль.',
+    adviceBenefit1: '+{amount} {money} за квартал',
+    adviceBenefitMargin: 'Маржа +{n}%',
+    adviceBenefitBonus: 'Бонус DATFO {n}%',
+    adviceBenefitPlan: 'Закрытие плана 100%',
+    adviceCta: 'Узнать у менеджера →',
     faqTitle: 'Вопросы',
     faqSub: 'Быстрые ответы на частые вопросы',
     faqSearch: 'Найти вопрос...',
@@ -342,6 +355,19 @@ const LANG = {
     bizSecRevenue: "TUSHUM Q1",
     bizSecPotential: "QO'SH. BONUS",
     bizSecRevenueShort: 'TUSHUM',
+    adviceTitle: 'FOM tavsiyasi',
+    adviceSectionTitle: 'TAVSIYALAR',
+    adviceCompetitorTitle: '{comp} ni {prod} ga almashtiring',
+    adviceCompetitorReason: "Siz <b>{comp}</b> ({brand}) sotyapsiz — bu <b>{prod}</b> ({project}) ning analogi. {reason}",
+    advicePlanTitle: '{project} rejasini yoping',
+    advicePlanReason: "<b>{project}</b> loyihasi <b>{pct}%</b> bajarilgan. Chorak oxirigacha <b>{n} dona</b> <b>{prod}</b> buyurtma qiling — rejani yopib, to'liq bonusni olasiz.",
+    adviceMarginTitle: '{prod} marjasi yuqori',
+    adviceMarginReason: "<b>{prod}</b> ({project}) marjasi <b>+{margin}%</b> — portfeldagi eng yuqorilaridan biri. Buyurtmani oshiring — foyda ham oshadi.",
+    adviceBenefit1: 'Chorakda +{amount} {money}',
+    adviceBenefitMargin: 'Marja +{n}%',
+    adviceBenefitBonus: 'DATFO bonusi {n}%',
+    adviceBenefitPlan: '100% reja yopilishi',
+    adviceCta: 'Menejerdan so\'rash →',
     faqTitle: 'Savollar',
     faqSub: "Tez-tez beriladigan savollar uchun tezkor javoblar",
     faqSearch: 'Savol topish...',
@@ -618,6 +644,7 @@ function renderDashboard(pharm) {
 
   allProjects = Array.isArray(d.projects) ? d.projects : [];
   renderProjects();
+  renderAdvice(d, pharm.inn);
 
   if (!isAdmin) {
     renderStickyCta(d);
@@ -2043,6 +2070,26 @@ function brandColor(name) {
   return BRAND_COLORS[(name || '').toUpperCase()] || '#0f172a';
 }
 
+// Карта "наш товар → конкурент на рынке" для генерации советов.
+// Когда придёт лист "Конкуренты" — заменим на реальные данные.
+const COMPETITOR_MAP = {
+  'Septolete':         { competitor: 'Strepsils',         brand: 'Reckitt',         reason: 'Тот же спектр действия, ниже бонус.' },
+  'Эналаприл':         { competitor: 'Энам',              brand: "Dr. Reddy's",     reason: 'Аналог, но менее стабильные поставки.' },
+  'Нолипрел Би-форте': { competitor: 'Лористу',           brand: 'Berlin-Chemie',   reason: 'Дороже для аптеки, маржа ниже.' },
+  'Лозартан':          { competitor: 'Козаар',            brand: 'MSD',             reason: 'Импортный, маржа меньше.' },
+  'Зофеноприл':        { competitor: 'Зокардис',          brand: 'Berlin-Chemie',   reason: 'Близкий аналог, дороже для розницы.' },
+  'Парацетамол':       { competitor: 'Калпол',            brand: 'GSK',             reason: 'Импортный — выше цена, ниже маржа.' },
+  'Ибупрофен':         { competitor: 'Нурофен',           brand: 'Reckitt',         reason: 'Бренд дороже, но маржа у нас выше.' },
+  'Левомеколь':        { competitor: 'Бактробан',         brand: 'GSK',             reason: 'Уже спектр, дороже.' },
+  'Декспантенол':      { competitor: 'Бепантен',          brand: 'Bayer',           reason: 'То же активное в-во, ваша маржа выше у нас.' },
+  'Витамин Д3':        { competitor: 'Аквадетрим',        brand: 'Polpharma',       reason: 'Аналог с меньшим бонусом.' },
+  'Омега-3':           { competitor: 'Доппельгерц Омега', brand: 'Queisser',        reason: 'Дороже, маржа ниже.' },
+  'Канестен':          { competitor: 'Клотримазол ген.',  brand: 'дженерики',       reason: 'Дженерик с минимальной маржой.' },
+  'Аспирин Кардио':    { competitor: 'Кардиомагнил',      brand: 'Takeda',          reason: 'Аналог, бонус у DATFO выше.' },
+  'Азитромицин':       { competitor: 'Сумамед',           brand: 'Pliva',           reason: 'Бренд дороже, маржа меньше.' },
+  'Мелатонин':         { competitor: 'Меларена',          brand: 'РЗС',             reason: 'Дороже на полке.' },
+};
+
 function brandLetter(name) {
   const n = (name || '?').trim();
   // Если есть пробел/дефис — берём первые буквы 2 слов
@@ -2104,6 +2151,178 @@ function getPeerInfo(pharmacyInn, productId, status, monthlyOrders) {
   const region = 8 + (h % 12); // среди 8-20 аптек региона
   return { type: 'active', rank, region };
 }
+
+// ============================================================
+// СОВЕТЫ ОТ FOM — рекомендации по росту продаж
+// ============================================================
+function generateAdvice(d, innStr) {
+  if (!d || !Array.isArray(d.projects) || d.projects.length === 0) return [];
+
+  const inn = String(innStr || 'demo');
+  const advice = [];
+  const used = new Set();  // чтобы не повторяться
+
+  // === Сценарий 1: "Замените конкурента" ===
+  // Сортируем проекты по слабости (худшие первыми)
+  const sortedProjects = [...d.projects].sort((a, b) => (a.percent || 0) - (b.percent || 0));
+
+  for (const project of sortedProjects) {
+    const products = getFakeProducts(project.name);
+    for (const product of products) {
+      const status = getProductStatus(inn, product.id);
+      if (status !== 'missed') continue;
+
+      const comp = COMPETITOR_MAP[product.name];
+      if (!comp) continue;
+      if (used.has(product.id)) continue;
+
+      const monthlyOrders = getMonthlyOrders(inn, product.id, product.monthly_orders_avg);
+      const potential = getQuarterlyPotential(product, monthlyOrders);
+      if (potential < 100000) continue;  // мелочёвку не пушим
+
+      const margin = Math.round((product.retail - product.price) / product.price * 100);
+      advice.push({
+        type: 'competitor',
+        icon: '💡',
+        product: product.name,
+        project: project.name,
+        potential,
+        title: t('adviceCompetitorTitle', { comp: comp.competitor, prod: product.name }),
+        reason: t('adviceCompetitorReason', {
+          comp: comp.competitor,
+          prod: product.name,
+          brand: comp.brand,
+          project: project.name,
+          reason: comp.reason,
+        }),
+        benefits: [
+          { icon: '💰', text: t('adviceBenefit1', { amount: formatMoney(potential), money: (currentLang === 'uz' ? "so'm" : 'сум') }) },
+          { icon: '📈', text: t('adviceBenefitMargin', { n: margin }) },
+          { icon: '🎁', text: t('adviceBenefitBonus', { n: product.bonus_pct }) },
+        ],
+      });
+      used.add(product.id);
+      if (advice.length >= 1) break;  // максимум 1 совет "конкурент"
+    }
+    if (advice.length >= 1) break;
+  }
+
+  // === Сценарий 2: "Закройте план проекта" ===
+  // Берём один из слабых проектов с топовым товаром
+  for (const project of sortedProjects) {
+    if (project.percent >= 100) continue;
+    const products = getFakeProducts(project.name);
+    // Топ-товар: с наибольшим bonus_amount_raw или просто первый в списке
+    const candidate = products.find(p => !used.has(p.id));
+    if (!candidate) continue;
+
+    const monthlyOrders = getMonthlyOrders(inn, candidate.id, candidate.monthly_orders_avg);
+    const factVal = parseMoney(project.fact || '0');
+    const planVal = parseMoney(project.quarter_plan || project.plan || '0');
+    const gap = Math.max(0, planVal - factVal);
+    const unitsNeeded = candidate.price > 0 ? Math.ceil(gap / candidate.price) : 0;
+    if (unitsNeeded < 5) continue;  // если меньше 5 упак — это не "закрыть план"
+
+    const potential = getQuarterlyPotential(candidate, monthlyOrders);
+    advice.push({
+      type: 'plan',
+      icon: '🎯',
+      product: candidate.name,
+      project: project.name,
+      potential,
+      title: t('advicePlanTitle', { project: project.name }),
+      reason: t('advicePlanReason', {
+        project: project.name,
+        pct: project.percent,
+        n: unitsNeeded,
+        prod: candidate.name,
+      }),
+      benefits: [
+        { icon: '✓', text: t('adviceBenefitPlan') },
+        { icon: '💰', text: t('adviceBenefit1', { amount: formatMoney(potential), money: (currentLang === 'uz' ? "so'm" : 'сум') }) },
+        { icon: '🎁', text: t('adviceBenefitBonus', { n: candidate.bonus_pct }) },
+      ],
+    });
+    used.add(candidate.id);
+    if (advice.length >= 2) break;
+  }
+
+  // === Сценарий 3: "Высокая маржа" ===
+  // Из всех проектов найти товар с максимальной маржой, который ещё не в use
+  let bestMargin = null;
+  for (const project of d.projects) {
+    const products = getFakeProducts(project.name);
+    for (const product of products) {
+      if (used.has(product.id)) continue;
+      const status = getProductStatus(inn, product.id);
+      if (status === 'active') continue;  // уже берут активно — нет смысла советовать
+      const margin = Math.round((product.retail - product.price) / product.price * 100);
+      if (margin < 40) continue;
+      if (!bestMargin || margin > bestMargin.margin) {
+        bestMargin = { product, project, margin };
+      }
+    }
+  }
+  if (bestMargin && advice.length < 3) {
+    const monthlyOrders = getMonthlyOrders(inn, bestMargin.product.id, bestMargin.product.monthly_orders_avg);
+    const potential = getQuarterlyPotential(bestMargin.product, monthlyOrders);
+    advice.push({
+      type: 'margin',
+      icon: '📈',
+      product: bestMargin.product.name,
+      project: bestMargin.project.name,
+      potential,
+      title: t('adviceMarginTitle', { prod: bestMargin.product.name }),
+      reason: t('adviceMarginReason', {
+        prod: bestMargin.product.name,
+        project: bestMargin.project.name,
+        margin: bestMargin.margin,
+      }),
+      benefits: [
+        { icon: '📈', text: t('adviceBenefitMargin', { n: bestMargin.margin }) },
+        { icon: '💰', text: t('adviceBenefit1', { amount: formatMoney(potential), money: (currentLang === 'uz' ? "so'm" : 'сум') }) },
+        { icon: '🎁', text: t('adviceBenefitBonus', { n: bestMargin.product.bonus_pct }) },
+      ],
+    });
+  }
+
+  return advice.slice(0, 3);
+}
+
+function renderAdvice(d, innStr) {
+  const root = document.getElementById('adviceList');
+  if (!root) return;
+
+  const isAdmin = !!(window.userData && window.userData.is_admin);
+  if (isAdmin) { root.innerHTML = ''; return; }  // админу не показываем продающие триггеры
+
+  const advice = generateAdvice(d, innStr);
+  if (!advice.length) {
+    document.getElementById('adviceSection').style.display = 'none';
+    return;
+  }
+  document.getElementById('adviceSection').style.display = '';
+
+  root.innerHTML = advice.map((a, idx) => `
+    <div class="advice-card" onclick="adviceCtaClick('${escapeHtml(a.title).replace(/'/g, "\\'")}', '${a.type}')">
+      <div class="advice-tag">
+        <span class="advice-tag-icon">${a.icon}</span>
+        <span class="advice-tag-text">${t('adviceTitle')}</span>
+      </div>
+      <div class="advice-headline">${a.title}</div>
+      <div class="advice-reason">${a.reason}</div>
+      <div class="advice-benefits">
+        ${a.benefits.map(b => `<div class="advice-benefit"><span>${b.icon}</span><span>${b.text}</span></div>`).join('')}
+      </div>
+      <button class="advice-cta">${t('adviceCta')}</button>
+    </div>
+  `).join('');
+}
+
+window.adviceCtaClick = function(title, type) {
+  trackEvent('advice_cta', { title, type });
+  contactManager();
+};
 
 function renderPeerLine(peer) {
   if (!peer) return '';

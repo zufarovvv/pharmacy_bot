@@ -914,6 +914,79 @@ body {
   font-size: 13px; color: var(--text-muted); font-weight: 600;
 }
 
+/* ===== СОВЕТЫ ОТ FOM ===== */
+.advice-list {
+  display: flex; flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+.advice-card {
+  background: linear-gradient(135deg, #fefce8 0%, #fef3c7 100%);
+  border: 1px solid #fde68a;
+  border-radius: 14px;
+  padding: 16px;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.15s;
+  box-shadow: 0 4px 12px -6px rgba(202,138,4,0.2);
+}
+.advice-card:active { transform: scale(0.99); }
+.advice-card:hover { box-shadow: 0 8px 24px -8px rgba(202,138,4,0.3); }
+
+.advice-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(202,138,4,0.15);
+  color: #854d0e;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 10px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.advice-tag-icon { font-size: 13px; }
+
+.advice-headline {
+  font-size: 17px; font-weight: 900;
+  color: #422006;
+  letter-spacing: -0.4px;
+  line-height: 1.2;
+  margin: 10px 0 6px;
+}
+.advice-reason {
+  font-size: 13px;
+  color: #713f12;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.advice-reason b { font-weight: 800; color: #422006; }
+
+.advice-benefits {
+  display: flex; flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.5);
+  border-radius: 10px;
+}
+.advice-benefit {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px;
+  color: #713f12;
+  font-weight: 600;
+}
+.advice-benefit span:first-child { font-size: 14px; }
+
+.advice-cta {
+  width: 100%;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  color: white;
+  font-family: inherit;
+  font-size: 13px; font-weight: 800;
+  border: none; border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  letter-spacing: -0.2px;
+  box-shadow: 0 6px 14px -4px rgba(14,116,144,0.4);
+}
+
 /* ===== FAQ FLOATING BUTTON ===== */
 .faq-fab {
   position: fixed;
@@ -1612,6 +1685,12 @@ body {
     <div class="quarter-progress">
       <div class="quarter-progress-fill" id="quarterFill" style="width: 0%;"></div>
     </div>
+  </section>
+
+  <!-- ===== СОВЕТЫ ОТ FOM (персональные рекомендации) ===== -->
+  <section id="adviceSection" style="display:none;">
+    <div class="section-title" data-i18n="adviceSectionTitle">РЕКОМЕНДАЦИИ</div>
+    <div class="advice-list" id="adviceList"></div>
   </section>
 
   <section class="dynamics-card" id="dynamicsCard">
