@@ -1889,13 +1889,35 @@ function setupFaqAutoHide() {
   faqAutoHideTimer = setTimeout(() => fab.classList.add('faded'), 20000);
 
   // Если юзер скроллит вверх (ближе к шапке) — показываем снова.
-  // Если скроллит вниз / дальше работает с дашбордом — оставляем скрытой.
   window.addEventListener('scroll', () => {
     if (!fab) return;
     if (window.scrollY < 80) {
       fab.classList.remove('faded');
     }
   }, { passive: true });
+
+  // Прячем FAQ когда "Связаться с менеджером" виден на экране — иначе кнопки
+  // перекрывают друг друга в правом нижнем углу.
+  if ('IntersectionObserver' in window) {
+    const observed = new Set();
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          fab.classList.add('faded');
+        }
+      });
+    }, { threshold: 0.15 });
+
+    // CTA-блок (cta-manager) и любые большие primary-кнопки в нижней зоне
+    const watch = () => {
+      document.querySelectorAll('.cta-manager, .cta-manager-btn').forEach((el) => {
+        if (!observed.has(el)) { observer.observe(el); observed.add(el); }
+      });
+    };
+    watch();
+    // На случай если CTA-секция перерендерилась — повторим через короткий тик.
+    setTimeout(watch, 1000);
+  }
 }
 
 window.openFaq = function() {
