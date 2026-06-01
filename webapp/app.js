@@ -118,14 +118,11 @@ const LANG = {
     pharmPartner: '✓ Партнёр DATFO',
     pctLabel: 'из плана',
     loaderHint: 'Загружаем данные...',
-    bizHeroCanGet: 'МОЖНО ДОЗАРАБОТАТЬ',
-    bizHeroCanGetSub: 'до конца квартала',
-    bizHeroClosed: 'ПЛАН ВЫПОЛНЕН',
-    bizHeroClosedSub: 'продолжайте — получите дополнительный бонус',
-    bizHeroInProgress: 'ДО ВЫПОЛНЕНИЯ ПЛАНА',
-    bizHeroInProgressSub: 'осталось до конца квартала',
-    bizHeroOnTrack: 'ВАШ ПОТЕНЦИАЛ',
-    bizHeroOnTrackSub: 'при выполнении плана на 100%',
+    bizHeroEarnedYou: 'ВЫ ЗАРАБОТАЛИ С DATFO',
+    bizHeroEarnedSubGrowth: 'за {n} мес · рост +{pct}% к началу',
+    bizHeroEarnedSubFlat: 'за {n} мес работы',
+    bizHeroEarnedSubDecline: 'за {n} мес · давайте вернём рост',
+    bizHeroMonthAvg: 'Средний доход в месяц',
     bizSecEarned: 'УЖЕ ЗАРАБОТАЛИ',
     bizSecRevenue: 'ПРОДАЖИ ЗА КВАРТАЛ',
     bizSecPotential: 'ДОПОЛНИТЕЛЬНЫЙ БОНУС',
@@ -343,14 +340,11 @@ const LANG = {
     pharmPartner: '✓ DATFO sherigi',
     pctLabel: 'rejadan',
     loaderHint: 'Yuklanmoqda...',
-    bizHeroCanGet: "QO'SHIMCHA TOPISH MUMKIN",
-    bizHeroCanGetSub: 'chorak oxirigacha',
-    bizHeroClosed: 'REJA BAJARILDI',
-    bizHeroClosedSub: "Davom eting — qo'shimcha bonus oling",
-    bizHeroInProgress: 'REJA BAJARILISHIGACHA',
-    bizHeroInProgressSub: 'chorak oxirigacha qoldi',
-    bizHeroOnTrack: 'SIZNING POTENSIALINGIZ',
-    bizHeroOnTrackSub: '100% reja bajarilganda',
+    bizHeroEarnedYou: 'DATFO BILAN TOPDINGIZ',
+    bizHeroEarnedSubGrowth: '{n} oy · boshlanishdan +{pct}% oshdi',
+    bizHeroEarnedSubFlat: "{n} oy ish davomida",
+    bizHeroEarnedSubDecline: "{n} oy · qaytadan o'sishga qaytaylik",
+    bizHeroMonthAvg: 'Oyiga o\'rtacha',
     bizSecEarned: 'ALLAQACHON TOPDINGIZ',
     bizSecRevenue: "CHORAK SOTUVI",
     bizSecPotential: "QO'SHIMCHA BONUS",
@@ -633,10 +627,10 @@ function renderDashboard(pharm) {
     hidePharmacyTriggers();
   } else {
     renderAlertBar(d);
-    // renderLostOpportunity() убран — bizHero уже показывает ту же сумму.
-    // Чтобы не сломать предыдущий стейт, явно прячем блок.
-    const heroLost = document.getElementById('heroLost');
-    if (heroLost) heroLost.style.display = 'none';
+    // bizHero теперь показывает ИСТОРИЮ доходов (за 8 мес), а heroLost —
+    // упущенную выгоду текущего квартала с CTA. Они дополняют друг друга,
+    // больше не дубликат.
+    renderLostOpportunity(d);
   }
 
   renderIncome(d);
@@ -1216,84 +1210,109 @@ function renderIncome(d) {
   renderBizHero(d);
 }
 
+// История доходов за 8 месяцев — стабильный фейк по ИНН.
+// Когда придёт реальный лист "История бонусов" — заменим эту функцию на чтение.
+function generateEarningsHistory(inn, monthsCount) {
+  const months = monthsCount || 8;
+  const h = simpleHash((inn || 'demo') + ':earnings');
+  // База — 400K..1.6M на первый месяц
+  const base = 400000 + (h % 1200) * 1000;
+  // Тренд: 0.94..1.18 в месяц (от лёгкого спада до уверенного роста)
+  const trendBucket = (h >> 5) % 100;
+  const monthlyTrend = trendBucket < 10 ? 0.94 + (trendBucket / 100)         // 10% — лёгкий спад
+                     : trendBucket < 40 ? 0.98 + ((trendBucket - 10) / 300)  // 30% — флэт
+                                        : 1.02 + ((trendBucket - 40) / 100); // остальное — рост
+  const values = [];
+  let cur = base;
+  for (let i = 0; i < months; i++) {
+    // Лёгкий шум 0.85..1.15 — чтобы не было идеальной прямой
+    const noiseBucket = (h >> (i * 4)) & 0xff;
+    const noise = 0.85 + (noiseBucket % 31) / 100;
+    values.push(Math.round(cur * noise));
+    cur *= monthlyTrend;
+  }
+  const total = values.reduce((a, b) => a + b, 0);
+  const first = values[0];
+  const last = values[values.length - 1];
+  const growthPct = first > 0 ? Math.round((last - first) / first * 100) : 0;
+  return { values, total, months, growthPct, avg: Math.round(total / months) };
+}
+
+function renderSparkline(values, opts) {
+  const o = opts || {};
+  const width  = o.width  || 240;
+  const height = o.height || 44;
+  const stroke = o.stroke || '#065f46';
+  const fill   = o.fill   || 'rgba(4,120,87,0.12)';
+  if (!values || values.length < 2) return '';
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+  const stepX = width / (values.length - 1);
+  const padTop = 4;
+  const usableH = height - padTop * 2;
+  const pts = values.map((v, i) => {
+    const x = i * stepX;
+    const y = padTop + usableH - ((v - min) / range) * usableH;
+    return { x, y };
+  });
+  const linePath = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+  // Закрашенная область под линией
+  const areaPath = linePath + ` L${width},${height} L0,${height} Z`;
+  const dots = pts.map((p, i) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${i === pts.length-1 ? 3.5 : 2}" fill="${stroke}"/>`).join('');
+  return `
+    <svg class="bizhero-spark" width="100%" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+      <path d="${areaPath}" fill="${fill}" stroke="none"/>
+      <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      ${dots}
+    </svg>
+  `;
+}
+
 function renderBizHero(d) {
   const bonuses = d.bonuses || {};
   const totals = d.totals || {};
-  const potential = parseMoney((bonuses.potential && bonuses.potential.amount) || '');
-  const accrued   = parseMoney((bonuses.accrued   && bonuses.accrued.amount)   || '');
-  const lost = Math.max(0, potential - accrued);
-  const quarterPct = totals.quarter_percent != null ? Number(totals.quarter_percent) : null;
+  const accrued = parseMoney((bonuses.accrued && bonuses.accrued.amount) || '');
   const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
 
-  // Сумма выручки квартала из фактов месяцев
+  // Сумма продаж квартала из фактов месяцев
   const months = totals.months || d.months || {};
   let revenue = 0;
   ['january', 'february', 'march'].forEach(m => {
     revenue += parseMoney((months[m] && months[m].fact) || '0');
   });
 
-  // === HERO === — что показываем в зависимости от ситуации
-  let heroLabel, heroAmount, heroSub, heroClass, heroAmountClass = '';
+  // === HERO === — история доходов за 8 месяцев работы с DATFO (демо)
+  const innStr = currentPharmInn || (currentPharm && currentPharm.inn) || 'demo';
+  const earnings = generateEarningsHistory(String(innStr), 8);
 
-  if (quarterPct != null && quarterPct >= 100) {
-    // План закрыт — поздравляем + давим на перевыполнение
-    heroClass  = 'success';
-    heroLabel  = t('bizHeroClosed');
-    heroAmount = quarterPct + '%';
-    heroSub    = t('bizHeroClosedSub');
-  } else if (lost > 0) {
-    // Есть упущенные деньги — главный триггер
-    heroClass  = quarterPct != null && quarterPct < 50 ? 'danger' : 'warning';
-    heroLabel  = t('bizHeroCanGet');
-    heroAmount = formatMoney(lost) + ' ' + moneyLabel;
-    heroSub    = t('bizHeroCanGetSub');
-    if (lost >= 10000000) heroAmountClass = 'medium';
-  } else if (quarterPct != null) {
-    // В работе, без упущенных денег — показываем сколько до 100%
-    heroClass  = 'warning';
-    heroLabel  = t('bizHeroInProgress');
-    heroAmount = (100 - quarterPct) + '%';
-    heroSub    = t('bizHeroInProgressSub');
-  } else {
-    // Нет данных — показываем потенциал
-    heroClass  = 'success';
-    heroLabel  = t('bizHeroOnTrack');
-    heroAmount = formatMoney(potential) + ' ' + moneyLabel;
-    heroSub    = t('bizHeroOnTrackSub');
-    if (potential >= 10000000) heroAmountClass = 'medium';
-  }
+  let subKey = 'bizHeroEarnedSubFlat';
+  if (earnings.growthPct >= 5)  subKey = 'bizHeroEarnedSubGrowth';
+  if (earnings.growthPct <= -5) subKey = 'bizHeroEarnedSubDecline';
 
   const heroEl = document.getElementById('bizHero');
   if (heroEl) {
-    heroEl.className = 'biz-hero ' + heroClass;
+    heroEl.className = 'biz-hero success';  // всегда позитив — это история
+    const amountClass = earnings.total >= 10000000 ? 'medium' : '';
     heroEl.innerHTML = `
-      <div class="biz-hero-label">${heroLabel}</div>
-      <div class="biz-hero-amount ${heroAmountClass}">${heroAmount}</div>
-      <div class="biz-hero-sub">${heroSub}</div>
+      <div class="biz-hero-label">${t('bizHeroEarnedYou')}</div>
+      <div class="biz-hero-amount ${amountClass}">${formatMoney(earnings.total)} ${moneyLabel}</div>
+      <div class="biz-hero-sub">${t(subKey, { n: earnings.months, pct: Math.abs(earnings.growthPct) })}</div>
+      <div class="biz-hero-chart">${renderSparkline(earnings.values, { width: 240, height: 44 })}</div>
     `;
   }
 
-  // === SECONDARY === — 2 карточки: что есть + потенциал/выручка
+  // === SECONDARY === — 2 карточки: бонус за текущий квартал + продажи квартала
   const secEl = document.getElementById('bizSecondary');
   if (secEl) {
-    let secondCard;
-    if (quarterPct != null && quarterPct >= 100) {
-      // Если план закрыт — справа показываем доп. потенциал (если есть)
-      secondCard = lost > 0
-        ? { label: t('bizSecPotential'), val: '+' + formatMoney(lost) + ' ' + moneyLabel, cls: 'amber' }
-        : { label: t('bizSecRevenue'),    val: formatMoney(revenue) + ' ' + moneyLabel,    cls: '' };
-    } else {
-      secondCard = { label: t('bizSecRevenue'), val: formatMoney(revenue) + ' ' + moneyLabel, cls: '' };
-    }
-
     secEl.innerHTML = `
       <div class="biz-sec-card">
         <div class="biz-sec-label">${t('bizSecEarned')}</div>
         <div class="biz-sec-val green">${formatMoney(accrued)} ${moneyLabel}</div>
       </div>
       <div class="biz-sec-card">
-        <div class="biz-sec-label">${secondCard.label}</div>
-        <div class="biz-sec-val ${secondCard.cls}">${secondCard.val}</div>
+        <div class="biz-sec-label">${t('bizSecRevenue')}</div>
+        <div class="biz-sec-val">${formatMoney(revenue)} ${moneyLabel}</div>
       </div>
     `;
   }
