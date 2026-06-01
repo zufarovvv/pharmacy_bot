@@ -50,22 +50,50 @@ cp .env.example .env
 
 Минимальный набор для запуска: `BOT_TOKEN`, `DB_USER`, `DB_PASS`, `DB_NAME`, `DB_HOST`, `DASHBOARD_SHEET_ID`, `WEB_APP_URL`.
 
-### 6. Публичный URL для Mini App
+### 6. Публичный URL для Mini App через ngrok
 
-Telegram открывает Web App только по HTTPS. В разработке самый простой путь — ngrok:
+Telegram открывает Web App только по HTTPS. В разработке используем ngrok-туннель.
+
+**Установка (один раз):**
+```bash
+brew install ngrok/ngrok/ngrok
+```
+
+#### Вариант A. Статичный домен — рекомендую (URL не меняется)
+
+1. Зарегистрируйся на https://dashboard.ngrok.com/signup (бесплатно).
+2. Возьми authtoken: https://dashboard.ngrok.com/get-started/your-authtoken
+3. Привяжи токен к локальному ngrok (один раз):
+   ```bash
+   ngrok config add-authtoken <TOKEN>
+   ```
+4. Зарезервируй домен: https://dashboard.ngrok.com/domains → **New Domain** → введи имя (например `datfo-bot`).
+   Бесплатный тариф даёт **один** статичный домен.
+5. Пропиши `WEB_APP_URL=https://datfo-bot.ngrok-free.app` в `.env` и тот же URL в @BotFather → Menu Button.
+6. Запускай туннель:
+   ```bash
+   ngrok http --url=https://datfo-bot.ngrok-free.app 8080
+   ```
+   *(на старых версиях ngrok флаг называется `--domain` вместо `--url`)*
+
+   URL **никогда не меняется**, никаких страниц-предупреждений. После рестарта `.env` и BotFather трогать не надо.
+
+#### Вариант B. Быстрый туннель (URL новый каждый раз)
 
 ```bash
-brew install ngrok
 ngrok http 8080
-# скопируй https://...ngrok-free.dev URL в WEB_APP_URL в .env
 ```
+
+ngrok выдаст случайный `https://abc-123.ngrok-free.app`. Скопируй в `WEB_APP_URL` в `.env` и в BotFather → Menu Button. **При каждом перезапуске** URL меняется → надо обновлять оба места. Подходит для разовых тестов.
 
 ### 7. Создать таблицы в БД и запустить бот
 
 ```bash
-uv run python database.py    # создаст таблицы users / pharmacies / polls / poll_answers
+uv run python database.py    # создаст таблицы users / pharmacies / polls / poll_answers / events
 uv run python bot.py         # запустит бот + API + синк Google Sheets
 ```
+
+`bot.py` сам вызывает `create_tables()` при старте, так что отдельный запуск `database.py` нужен только для отладки.
 
 При первом запуске бот в фоне читает `DASHBOARD_SHEET_ID`, парсит все листы, делает upsert аптек в Postgres (`scheduled_tasks` в [bot.py](bot.py)).
 
@@ -79,13 +107,71 @@ uv run python bot.py         # запустит бот + API + синк Google S
    UPDATE users SET role = 'superadmin' WHERE telegram_id = <твой id>;
    ```
 
+## Запуск рабочей сессии
+
+Каждый раз когда садишься работать — открой **два терминала**.
+
+**Терминал 1** — туннель:
+```bash
+ngrok http --url=https://datfo-bot.ngrok-free.app 8080
+```
+
+Жди строку `Forwarding https://… -> http://localhost:8080` — туннель готов.
+
+**Терминал 2** — бот:
+```bash
+cd /Users/mukhammad/Developer/DATFO/pharmacy_bot
+uv run python bot.py
+```
+
+Должно появиться:
+```
+🤖 Бот запущен (UPDATED: Poll Buttons Stay)!
+🔄 [DASH] Чтение Google-таблицы...
+  ✓ 'III-Q': N аптек
+  ✓ [DASH] Привязок к Telegram: K/N
+✅ [DASH] Обновлено: N/N
+🌐 API запущен на http://0.0.0.0:8080
+```
+
+Mini App открывается через @ваш-бот в Telegram → Menu Button.
+
+### Полезные команды
+
+```bash
+# проверить статус туннеля и логи последних запросов
+open http://127.0.0.1:4040
+
+# принудительно перечитать Google Sheets (без рестарта бота)
+uv run python dashboard_sync.py
+
+# проверить здоровье API
+curl https://datfo-bot.ngrok-free.app/api/health
+
+# узнать свой telegram_id в боте
+# отправь команду: /myid
+
+# диагностика контактов менеджеров (только superadmin)
+# отправь команду: /diag
+```
+
+### Если ngrok падает
+
+| Ошибка | Что делать |
+|---|---|
+| `command not found: ngrok` | `brew install ngrok/ngrok/ngrok` |
+| `ERR_NGROK_4018: authentication failed` | `ngrok config add-authtoken <token>` |
+| `bind: address already in use` | Старый ngrok ещё работает → `pkill ngrok` |
+| `domain is reserved by another account` | Имя занято → выбери другое в dashboard |
+
 ## Как обновляются данные аптек
 
 Менеджер ведёт Excel-файл с двумя ключевыми листами:
 
 - **«III-Q»** — мастер-таблица: одна строка = одна аптека (юр. лицо), колонки B–I — метаданные (ИНН, юр. название, сеть, менеджер, категория), дальше блоками по 10 колонок — данные по каждому проекту (KRKA, KUSUM, WELFARM, ...): план/факт по месяцам и квартальная ВП.
 - **«Доступы»** — привязка ИНН → telegram_id: 2 колонки (A=ИНН, B=telegram_id). Заполняется по мере выдачи доступа аптекам.
-- **«Менеджеры»** — контакты менеджеров: ФИО / Телефон / Telegram (`@username`) / Telegram ID / Регион. Бот ищет менеджера по имени из «III-Q» и подтягивает его контакты к каждой аптеке — так в Mini App работают кнопки «Позвонить» и «Написать в Telegram».
+- **«Менеджеры»** — контакты менеджеров: ФИО / Телефон / Telegram (`@username`) / Telegram ID / Регион. Бот ищет менеджера по имени из «III-Q» и подтягивает его контакты к каждой аптеке — так в Mini App работают кнопки «Позвонить» и «Написать в Telegram». Поддерживается fallback-строка с ФИО = `*` (или `default`) — используется для всех менеджеров, у которых нет персональной строки.
+- **«База знаний»** — Q&A для AI-ассистента: Категория / Вопрос / Ответ / Активно. Менеджер заполняет — ИИ использует как источник истины при ответах аптекам. Требует `ANTHROPIC_API_KEY` в `.env`.
 - **«Свод таб new»** — формульный лист-просмотр одной аптеки. Менеджер вписывает в C4 нужный ИНН — формулы тянут данные из «III-Q». Используется для скриншотов клиенту.
 
 Файл живёт в Google Sheets (`DASHBOARD_SHEET_ID` в `.env`). Каждые 5 минут бот ([bot.py](bot.py) `scheduled_tasks`) делает следующее:
@@ -111,6 +197,8 @@ Mini App при следующем открытии видит свежие да
 | `API_PORT` | Порт aiohttp (по умолчанию `8080`) |
 | `ALLOW_QUERY_TG_ID` | **DEV ONLY.** `1` — разрешает `?tg_id=` без подписи Telegram. В проде ставить `0`. |
 | `FEEDBACK_CHANNEL_ID` | Chat ID канала, куда бот пересылает отзывы |
+| `ANTHROPIC_API_KEY` | Ключ Anthropic Claude. Если пусто — AI-ассистент в Mini App отключён, остаётся только статичный FAQ. Получить: https://console.anthropic.com/ |
+| `ANTHROPIC_MODEL` | Модель Claude. По умолчанию `claude-haiku-4-5` (дёшево, быстро). |
 | `SHEET_ID`, `DATA_SHEET_GID`, `REPORT_SHEET_GID` | Старая Google-таблица для Selenium-скриншотов |
 
 ## Структура проекта
