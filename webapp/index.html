@@ -1147,6 +1147,20 @@ body {
   font-size: 13px; font-weight: 700;
   cursor: pointer;
 }
+.faq-close-app-btn {
+  display: block;
+  margin: 8px 16px 0;
+  width: calc(100% - 32px);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  font-family: inherit;
+  font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
+.faq-close-app-btn:hover { background: var(--bg-secondary); color: var(--text-secondary); }
 
 /* ===== FAQ MODE TABS ===== */
 .faq-mode-tabs {
@@ -1785,6 +1799,7 @@ body {
       <input class="faq-search" type="text" id="faqSearch" data-i18n-placeholder="faqSearch" placeholder="Найти вопрос...">
       <div class="faq-list" id="faqList"></div>
       <button class="faq-tour-btn" onclick="faqStartTour()" data-i18n="faqStartTour">▶ Запустить ознакомительный тур</button>
+      <button class="faq-close-app-btn" onclick="closeWebApp()" data-i18n="faqCloseApp">✕ Закрыть приложение</button>
     </div>
 
     <!-- РЕЖИМ 2: AI-чат -->

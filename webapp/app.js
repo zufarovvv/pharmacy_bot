@@ -143,6 +143,7 @@ const LANG = {
     faqSub: 'Быстрые ответы на частые вопросы',
     faqSearch: 'Найти вопрос...',
     faqStartTour: '▶ Запустить ознакомительный тур',
+    faqCloseApp: '✕ Закрыть приложение',
     faqEmpty: 'Ничего не найдено по вашему запросу',
     faqModeQuick: 'Быстрые ответы',
     faqModeAi: '✦ Спросить AI',
@@ -364,6 +365,7 @@ const LANG = {
     faqSub: "Tez-tez beriladigan savollar uchun tezkor javoblar",
     faqSearch: 'Savol topish...',
     faqStartTour: '▶ Tanishuv turini boshlash',
+    faqCloseApp: '✕ Ilovani yopish',
     faqEmpty: "So'rovingiz bo'yicha hech narsa topilmadi",
     faqModeQuick: 'Tezkor javoblar',
     faqModeAi: "✦ AI'dan so'rash",
@@ -502,13 +504,61 @@ function detectLang() {
 // ============================================================
 (function init() {
   const tg = window.Telegram && window.Telegram.WebApp;
-  if (tg) { tg.ready(); tg.expand(); tg.setBackgroundColor('#f8fafc'); }
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    tg.setBackgroundColor('#f8fafc');
+    // BackButton: единый обработчик "стрелки назад" Telegram.
+    // Когда открыта любая наша шторка — стрелка закрывает её.
+    // Когда ничего не открыто — стрелка прячется, и обычный крестик Telegram
+    // нормально закрывает Mini App.
+    if (tg.BackButton && tg.BackButton.onClick) {
+      tg.BackButton.onClick(() => {
+        const active = getActiveOverlay();
+        if (active && typeof active.close === 'function') {
+          active.close();
+        }
+      });
+    }
+  }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', main);
   } else {
     main();
   }
 })();
+
+// ============================================================
+// TELEGRAM BACK-BUTTON INTEGRATION
+// ============================================================
+function getActiveOverlay() {
+  // Порядок — от "верхнего" к "нижнему". Закрываем то, что наверху.
+  const candidates = [
+    { el: document.getElementById('promoOverlay'),    close: window.closePromo },
+    { el: document.getElementById('mgrOverlay'),      close: () => window.closeManager && window.closeManager() },
+    { el: document.getElementById('productsOverlay'), close: window.closeProducts },
+    { el: document.getElementById('faqOverlay'),      close: window.closeFaq },
+  ];
+  for (const o of candidates) {
+    if (o.el && o.el.classList && o.el.classList.contains('active')) return o;
+  }
+  return null;
+}
+
+function updateBackButton() {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (!tg || !tg.BackButton) return;
+  try {
+    if (getActiveOverlay()) tg.BackButton.show();
+    else                    tg.BackButton.hide();
+  } catch (e) { /* старый клиент Telegram — не поддерживает BackButton */ }
+}
+
+window.closeWebApp = function() {
+  trackEvent('app_close', {});
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg && tg.close) tg.close();
+};
 
 async function main() {
   currentLang = detectLang();
@@ -1481,6 +1531,7 @@ function showPromo(promo) {
   if (window.userData && window.userData.is_admin) return;
   const overlay = document.getElementById('promoOverlay');
   if (!overlay) return;
+  setTimeout(updateBackButton, 0);
   document.getElementById('promoIcon').textContent = promo.icon;
   document.getElementById('promoEyebrow').textContent = promo.eyebrow;
   document.getElementById('promoAmount').textContent = promo.amount;
@@ -1498,6 +1549,7 @@ window.closePromo = function() {
     trackEvent('promo_skip', { scenario: promoScenario });
   }
   if (overlay) overlay.classList.remove('active');
+  updateBackButton();
 };
 
 window.promoCtaClick = function() {
@@ -1755,11 +1807,13 @@ window.contactManager = function() {
 
   actions.innerHTML = items.join('');
   document.getElementById('mgrOverlay').classList.add('active');
+  updateBackButton();
 };
 
 window.closeManager = function(e) {
   if (e && e.target && e.target.id !== 'mgrOverlay' && !e.target.classList.contains('mgr-close')) return;
   document.getElementById('mgrOverlay').classList.remove('active');
+  updateBackButton();
 };
 
 window.openExternal = function(url, e) {
@@ -1864,6 +1918,7 @@ window.openFaq = function() {
   renderAiSuggestions();
   const overlay = document.getElementById('faqOverlay');
   if (overlay) overlay.classList.add('active');
+  updateBackButton();
 };
 
 window.setFaqMode = function(mode) {
@@ -2000,6 +2055,7 @@ function scrollAiChat() {
 window.closeFaq = function() {
   const overlay = document.getElementById('faqOverlay');
   if (overlay) overlay.classList.remove('active');
+  updateBackButton();
 };
 
 window.toggleFaqItem = function(idx) {
@@ -2503,7 +2559,7 @@ function renderProductsOverlay(projectName, products, summary) {
   overlay.innerHTML = `
     <div class="prod-sheet">
       <div class="sheet-close-anchor"><button class="prod-close" onclick="closeProducts()">×</button></div>
-      <div class="prod-sheet-head">
+      <div class="prod-sheet-head" data-fix-backbutton>
         <div class="prod-project-name">${escapeHtml(projectName)}</div>
         <div class="prod-project-sub">${t('prodSub', { n: products.length })}</div>
       </div>
@@ -2524,12 +2580,14 @@ function renderProductsOverlay(projectName, products, summary) {
     </div>
   `;
   overlay.classList.add('active');
+  updateBackButton();
 }
 
 window.closeProducts = function() {
   const overlay = document.getElementById('productsOverlay');
   if (overlay) overlay.classList.remove('active');
   currentProductsProject = null;
+  updateBackButton();
 };
 
 window.productCtaClick = function(projectName) {

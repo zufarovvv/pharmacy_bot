@@ -303,6 +303,7 @@ ALLOWED_EVENT_TYPES = {
     'faq_tour_start',
     'ai_ask',
     'advice_cta',
+    'app_close',
 }
 
 
