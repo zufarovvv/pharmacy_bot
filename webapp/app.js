@@ -2650,29 +2650,40 @@ function renderError(msg) {
 // ============================================================
 // ONBOARDING TOUR
 // ============================================================
-const tourStepsConfig = [
-  { selector: '.hero-earned',   titleKey: 'tour_earned_t',   textKey: 'tour_earned' },
-  { selector: '#heroLost',      titleKey: 'tour_lost_t',     textKey: 'tour_lost' },
-  { selector: '#deadlineBadge', titleKey: 'tour_deadline_t', textKey: 'tour_deadline' },
-  { selector: '.stats-grid',    titleKey: 'tour_stats_t',    textKey: 'tour_stats' },
-  { selector: '#dynamicsCard',  titleKey: 'tour_dyn_t',      textKey: 'tour_dyn' },
-  { selector: '#bonusGrid',     titleKey: 'tour_bonus_t',    textKey: 'tour_bonus' },
-  { selector: '#projList',      titleKey: 'tour_proj_t',     textKey: 'tour_proj' },
-  { selector: '.cta-manager',   titleKey: 'tour_cta_t',      textKey: 'tour_cta' },
+// Шаги тура — только секции, которые реально есть в текущем дашборде.
+// Невидимые (display:none) отфильтровываются при старте.
+const TOUR_STEPS = [
+  { sel: '#bizHero',     tKey: 'tour_earned_t', dKey: 'tour_earned' },
+  { sel: '.stats-grid',  tKey: 'tour_stats_t',  dKey: 'tour_stats' },
+  { sel: '#dynamicsCard',tKey: 'tour_dyn_t',    dKey: 'tour_dyn' },
+  { sel: '#bonusGrid',   tKey: 'tour_bonus_t',  dKey: 'tour_bonus' },
+  { sel: '#projList',    tKey: 'tour_proj_t',   dKey: 'tour_proj' },
+  { sel: '.cta-manager', tKey: 'tour_cta_t',    dKey: 'tour_cta' },
 ];
+
+let tourSteps = [];   // отфильтрованные видимые шаги (заполняются при старте)
 let tourIndex = 0;
+
+function tourVisible(el) {
+  return el && el.offsetParent !== null && el.getClientRects().length > 0;
+}
+
 window.tourShowWelcome = function() { document.getElementById('tourWelcome').classList.add('active'); };
 function tourHideWelcome() { document.getElementById('tourWelcome').classList.remove('active'); }
+
 window.tourStart = function() {
   trackEvent('tour_started', {});
   tourHideWelcome();
-  tourIndex = 0;
-  // Пока идёт тур — прячем продающие триггеры (советы, алерт, промо, FAQ-кнопку),
-  // чтобы не отвлекали от обучения. См. CSS `body.tour-active`.
+  // Пока идёт тур — прячем продающие триггеры (см. CSS body.tour-active).
   document.body.classList.add('tour-active');
+  // Берём только реально видимые секции — никаких "прыжков" по отсутствующим.
+  tourSteps = TOUR_STEPS.filter(s => tourVisible(document.querySelector(s.sel)));
+  if (!tourSteps.length) { document.body.classList.remove('tour-active'); return; }
+  tourIndex = 0;
   document.getElementById('tourOverlay').classList.add('active');
   tourRender();
 };
+
 window.tourFinish = function() {
   const wasActive = document.getElementById('tourOverlay').classList.contains('active');
   trackEvent(wasActive ? 'tour_finished' : 'tour_skipped', { step: tourIndex });
@@ -2681,41 +2692,80 @@ window.tourFinish = function() {
   document.getElementById('tourOverlay').classList.remove('active');
   try { localStorage.setItem('datfo_tour_done', '1'); } catch (e) {}
 };
-window.tourNext = function() { if (tourIndex < tourStepsConfig.length - 1) { tourIndex++; tourRender(); } else { tourFinish(); } };
-window.tourPrev = function() { if (tourIndex > 0) { tourIndex--; tourRender(); } };
-function tourRender() {
-  const step = tourStepsConfig[tourIndex];
-  const el = document.querySelector(step.selector);
-  if (!el) { window.tourNext(); return; }
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  setTimeout(() => {
-    const rect = el.getBoundingClientRect();
-    const pad = 8;
-    const sp = document.getElementById('tourSpotlight');
-    sp.style.top = (rect.top - pad) + 'px';
-    sp.style.left = (rect.left - pad) + 'px';
-    sp.style.width = (rect.width + pad*2) + 'px';
-    sp.style.height = (rect.height + pad*2) + 'px';
-    document.getElementById('tourTitle').textContent = t(step.titleKey);
-    document.getElementById('tourText').textContent = t(step.textKey);
-    document.getElementById('tourProgress').textContent = t('tourStep', { n: tourIndex + 1, total: tourStepsConfig.length });
-    document.getElementById('tourPrevBtn').style.visibility = tourIndex === 0 ? 'hidden' : 'visible';
-    document.getElementById('tourNextBtn').textContent = tourIndex === tourStepsConfig.length - 1 ? t('tourDone') : t('tourNext');
-    const tt = document.getElementById('tourTooltip');
-    const vh = window.innerHeight, vw = window.innerWidth;
-    let top = rect.bottom + 14;
-    if (top + tt.offsetHeight + 20 > vh) top = Math.max(12, rect.top - tt.offsetHeight - 14);
-    if (top < 12) top = 12;
-    let left = Math.max(12, Math.min(vw - tt.offsetWidth - 12, rect.left + rect.width/2 - tt.offsetWidth/2));
-    tt.style.top = top + 'px';
-    tt.style.left = left + 'px';
-  }, 350);
+
+window.tourNext = function() {
+  if (tourIndex < tourSteps.length - 1) { tourIndex++; tourRender(); }
+  else { tourFinish(); }
+};
+window.tourPrev = function() {
+  if (tourIndex > 0) { tourIndex--; tourRender(); }
+};
+
+// Текст и кнопки тултипа — обновляем сразу, не дожидаясь скролла.
+function tourSetText(step) {
+  document.getElementById('tourTitle').textContent = t(step.tKey);
+  document.getElementById('tourText').textContent = t(step.dKey);
+  document.getElementById('tourProgress').textContent = t('tourStep', { n: tourIndex + 1, total: tourSteps.length });
+  document.getElementById('tourPrevBtn').style.visibility = tourIndex === 0 ? 'hidden' : 'visible';
+  document.getElementById('tourNextBtn').textContent = tourIndex === tourSteps.length - 1 ? t('tourDone') : t('tourNext');
 }
-window.addEventListener('resize', () => { if (document.getElementById('tourOverlay').classList.contains('active')) tourRender(); });
+
+// Ставим подсветку и тултип по фактической позиции элемента.
+function tourPlace(el) {
+  const r = el.getBoundingClientRect();
+  const pad = 8;
+  const sp = document.getElementById('tourSpotlight');
+  sp.style.top = (r.top - pad) + 'px';
+  sp.style.left = (r.left - pad) + 'px';
+  sp.style.width = (r.width + pad * 2) + 'px';
+  sp.style.height = (r.height + pad * 2) + 'px';
+
+  const tt = document.getElementById('tourTooltip');
+  const vh = window.innerHeight, vw = window.innerWidth;
+  let top = r.bottom + 14;
+  if (top + tt.offsetHeight + 20 > vh) top = Math.max(12, r.top - tt.offsetHeight - 14);
+  if (top < 12) top = 12;
+  const left = Math.max(12, Math.min(vw - tt.offsetWidth - 12, r.left + r.width / 2 - tt.offsetWidth / 2));
+  tt.style.top = top + 'px';
+  tt.style.left = left + 'px';
+}
+
+// Ждём пока smooth-скролл реально остановится (rAF следит за scrollY),
+// потом один раз ставим позицию — спотлайт плавно доедет за счёт CSS-transition.
+// Адаптивно: быстрый скролл — быстро, без фиксированного лага.
+function tourAfterScroll(cb) {
+  let lastY = window.scrollY, stable = 0, frames = 0;
+  (function check() {
+    frames++;
+    const y = window.scrollY;
+    if (Math.abs(y - lastY) < 0.5) { if (++stable >= 3) return cb(); }
+    else stable = 0;
+    lastY = y;
+    if (frames > 50) return cb();  // страховка ~0.8 c
+    requestAnimationFrame(check);
+  })();
+}
+
+function tourRender() {
+  const step = tourSteps[tourIndex];
+  const el = document.querySelector(step.sel);
+  if (!tourVisible(el)) { return window.tourNext(); }
+  tourSetText(step);
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  tourAfterScroll(() => tourPlace(el));
+}
+
+window.addEventListener('resize', () => {
+  if (!document.getElementById('tourOverlay').classList.contains('active')) return;
+  const step = tourSteps[tourIndex];
+  const el = step && document.querySelector(step.sel);
+  if (el) tourPlace(el);  // на ресайз — мгновенно, без ожидания скролла
+});
+
 window.addEventListener('load', () => {
   setTimeout(() => {
     try {
-      if (userData && userData.is_admin) return; // admins skip the welcome tour
+      if (userData && userData.is_admin) return; // админам тур не нужен
       if (!localStorage.getItem('datfo_tour_done')) window.tourShowWelcome();
     } catch (e) { window.tourShowWelcome(); }
   }, 800);
