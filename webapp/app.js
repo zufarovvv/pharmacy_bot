@@ -122,6 +122,7 @@ const LANG = {
     bizHeroEarnedSubGrowth: 'за {n} мес · рост +{pct}% к началу',
     bizHeroEarnedSubFlat: 'за {n} мес работы',
     bizHeroMonthAvg: 'Средний доход в месяц',
+    bizHeroCould: 'А могли ещё +{amount} {money} →',
     bizSecEarned: 'УЖЕ ЗАРАБОТАЛИ',
     bizSecRevenue: 'ПРОДАЖИ ЗА КВАРТАЛ',
     bizSecPotential: 'ДОПОЛНИТЕЛЬНЫЙ БОНУС',
@@ -344,6 +345,7 @@ const LANG = {
     bizHeroEarnedSubGrowth: '{n} oy · boshlanishdan +{pct}% oshdi',
     bizHeroEarnedSubFlat: "{n} oy ish davomida",
     bizHeroMonthAvg: 'Oyiga o\'rtacha',
+    bizHeroCould: "Yana +{amount} {money} topishingiz mumkin edi →",
     bizSecEarned: 'ALLAQACHON TOPDINGIZ',
     bizSecRevenue: "CHORAK SOTUVI",
     bizSecPotential: "QO'SHIMCHA BONUS",
@@ -1283,7 +1285,13 @@ function generateEarningsHistory(inn, monthsCount) {
   const first = values[0];
   const last = values[values.length - 1];
   const growthPct = first > 0 ? Math.round((last - first) / first * 100) : 0;
-  return { values, total, months, growthPct, avg: Math.round(total / months) };
+
+  // "А могли ещё больше" — стабильный упущенный потенциал, 35-65% от заработанного.
+  const h2 = simpleHash((inn || 'demo') + ':couldhave');
+  const lossFactor = 0.35 + (h2 % 30) / 100;  // 0.35..0.65
+  const couldHave = Math.round(total * lossFactor);
+
+  return { values, total, months, growthPct, avg: Math.round(total / months), couldHave };
 }
 
 function renderSparkline(values, opts) {
@@ -1348,6 +1356,10 @@ function renderBizHero(d) {
       <div class="biz-hero-amount ${amountClass}">${formatMoney(earnings.total)} ${moneyLabel}</div>
       <div class="biz-hero-sub">${t(subKey, { n: earnings.months, pct: Math.abs(earnings.growthPct) })}</div>
       <div class="biz-hero-chart">${renderSparkline(earnings.values, { width: 240, height: 44 })}</div>
+      <button class="biz-hero-could" onclick="adviceCtaClick('could-have-more', 'history')">
+        <span class="biz-hero-could-icon">💡</span>
+        <span class="biz-hero-could-text">${t('bizHeroCould', { amount: formatMoney(earnings.couldHave), money: moneyLabel })}</span>
+      </button>
     `;
   }
 

@@ -196,6 +196,30 @@ body {
   margin: 0 auto;
   opacity: 0.85;
 }
+.biz-hero-could {
+  display: inline-flex;
+  align-items: center; gap: 8px;
+  margin: 18px auto 0;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #713f12;
+  border: none;
+  border-radius: 14px;
+  padding: 11px 18px;
+  font-family: inherit;
+  font-size: 13px; font-weight: 800;
+  letter-spacing: -0.2px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px -6px rgba(202,138,4,0.35);
+  transition: transform 0.15s;
+  animation: bizCouldPulse 2.4s ease-in-out infinite;
+}
+.biz-hero-could:active { transform: scale(0.97); }
+.biz-hero-could-icon { font-size: 16px; }
+.biz-hero-could-text { line-height: 1.1; }
+@keyframes bizCouldPulse {
+  0%, 100% { box-shadow: 0 6px 16px -6px rgba(202,138,4,0.35); }
+  50%      { box-shadow: 0 8px 22px -4px rgba(202,138,4,0.55); }
+}
 
 /* Вторичные карточки под hero — 2 числа в строку */
 .biz-secondary {
