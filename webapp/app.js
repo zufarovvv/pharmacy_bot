@@ -121,7 +121,6 @@ const LANG = {
     bizHeroEarnedYou: 'ВЫ ЗАРАБОТАЛИ С DATFO',
     bizHeroEarnedSubGrowth: 'за {n} мес · рост +{pct}% к началу',
     bizHeroEarnedSubFlat: 'за {n} мес работы',
-    bizHeroEarnedSubDecline: 'за {n} мес · давайте вернём рост',
     bizHeroMonthAvg: 'Средний доход в месяц',
     bizSecEarned: 'УЖЕ ЗАРАБОТАЛИ',
     bizSecRevenue: 'ПРОДАЖИ ЗА КВАРТАЛ',
@@ -343,7 +342,6 @@ const LANG = {
     bizHeroEarnedYou: 'DATFO BILAN TOPDINGIZ',
     bizHeroEarnedSubGrowth: '{n} oy · boshlanishdan +{pct}% oshdi',
     bizHeroEarnedSubFlat: "{n} oy ish davomida",
-    bizHeroEarnedSubDecline: "{n} oy · qaytadan o'sishga qaytaylik",
     bizHeroMonthAvg: 'Oyiga o\'rtacha',
     bizSecEarned: 'ALLAQACHON TOPDINGIZ',
     bizSecRevenue: "CHORAK SOTUVI",
@@ -1286,9 +1284,10 @@ function renderBizHero(d) {
   const innStr = currentPharmInn || (currentPharm && currentPharm.inn) || 'demo';
   const earnings = generateEarningsHistory(String(innStr), 8);
 
+  // Подпись только в двух вариантах: рост / стабильно.
+  // Вариант с "вернём рост" убран — это история, всегда позитив.
   let subKey = 'bizHeroEarnedSubFlat';
-  if (earnings.growthPct >= 5)  subKey = 'bizHeroEarnedSubGrowth';
-  if (earnings.growthPct <= -5) subKey = 'bizHeroEarnedSubDecline';
+  if (earnings.growthPct >= 5) subKey = 'bizHeroEarnedSubGrowth';
 
   const heroEl = document.getElementById('bizHero');
   if (heroEl) {
