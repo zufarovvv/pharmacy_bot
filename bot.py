@@ -1,9 +1,12 @@
 import asyncio
 import logging
+import logging.handlers
 import os
+import sys
 import pandas as pd
 from datetime import datetime
 from contextlib import suppress
+from pathlib import Path
 from aiogram.exceptions import TelegramBadRequest
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, F, types
@@ -17,6 +20,61 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
+load_dotenv()
+
+# ============================================================
+# Логирование: всё в файл logs/bot.log, в терминале — только реальные ошибки.
+# Файл ротируется на 10 МБ, хранится до 5 архивов.
+# ============================================================
+LOG_DIR = Path(__file__).parent / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / 'bot.log'
+
+_log_fmt = logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
+_file_handler = logging.handlers.RotatingFileHandler(
+    LOG_FILE, maxBytes=10 * 1024 * 1024, backupCount=5, encoding='utf-8',
+)
+_file_handler.setFormatter(_log_fmt)
+_file_handler.setLevel(logging.INFO)
+
+_console_handler = logging.StreamHandler(sys.__stderr__)
+_console_handler.setFormatter(logging.Formatter('[%(levelname)s] %(message)s'))
+_console_handler.setLevel(logging.WARNING)
+
+logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _console_handler])
+
+
+class _StdoutToLog:
+    """Перехватчик print() → пишет в logs/bot.log как INFO."""
+    def __init__(self):
+        self.logger = logging.getLogger('stdout')
+        self.buffer = ''
+    def write(self, msg):
+        if not msg:
+            return
+        self.buffer += msg
+        while '\n' in self.buffer:
+            line, self.buffer = self.buffer.split('\n', 1)
+            line = line.rstrip()
+            if line:
+                self.logger.info(line)
+    def flush(self):
+        if self.buffer.strip():
+            self.logger.info(self.buffer.rstrip())
+            self.buffer = ''
+
+
+# Один информационный print в реальный терминал — куда смотреть за логами.
+sys.__stdout__.write(f"🤖 Бот стартует. Логи: {LOG_FILE}\n")
+sys.__stdout__.write("В терминале остаются только WARNING и ERROR. Полный лог — в файле.\n")
+sys.__stdout__.flush()
+
+if os.getenv('LOG_TO_FILE', '1') == '1':
+    sys.stdout = _StdoutToLog()
+
 from database import (
     get_pharmacies_by_tg_id, get_user_data, register_user,
     update_user_role, get_all_active_users, upsert_user,
@@ -26,10 +84,6 @@ from database import (
 from screenshot import update_inn_in_sheet, take_screenshot
 from dashboard_sync import sync_dashboard, sync_dashboard_from_excel
 from api import start_api
-
-load_dotenv()
-# WARNING вместо INFO: убирает шум от aiogram/aiohttp, оставляет наши print и реальные ошибки
-logging.basicConfig(level=logging.WARNING)
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 FEEDBACK_CHANNEL_ID = os.getenv('FEEDBACK_CHANNEL_ID')

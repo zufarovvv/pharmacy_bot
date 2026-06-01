@@ -139,6 +139,12 @@ Mini App открывается через @ваш-бот в Telegram → Menu B
 ### Полезные команды
 
 ```bash
+# смотреть логи бота в реальном времени (всё что было в print + warning + error)
+tail -f logs/bot.log
+
+# найти ошибки за последний запуск
+grep -E "ERROR|WARNING" logs/bot.log | tail -50
+
 # проверить статус туннеля и логи последних запросов
 open http://127.0.0.1:4040
 
@@ -199,6 +205,7 @@ Mini App при следующем открытии видит свежие да
 | `FEEDBACK_CHANNEL_ID` | Chat ID канала, куда бот пересылает отзывы |
 | `ANTHROPIC_API_KEY` | Ключ Anthropic Claude. Если пусто — AI-ассистент в Mini App отключён, остаётся только статичный FAQ. Получить: https://console.anthropic.com/ |
 | `ANTHROPIC_MODEL` | Модель Claude. По умолчанию `claude-haiku-4-5` (дёшево, быстро). |
+| `LOG_TO_FILE` | `1` (по умолчанию) — `print()` уходит в `logs/bot.log`, в терминале только WARNING/ERROR. `0` — всё в терминал как раньше. |
 | `SHEET_ID`, `DATA_SHEET_GID`, `REPORT_SHEET_GID` | Старая Google-таблица для Selenium-скриншотов |
 
 ## Структура проекта
