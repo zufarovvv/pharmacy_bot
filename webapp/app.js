@@ -2730,19 +2730,31 @@ function tourPlace(el) {
   tt.style.left = left + 'px';
 }
 
-// Ждём пока smooth-скролл реально остановится (rAF следит за scrollY),
-// потом один раз ставим позицию — спотлайт плавно доедет за счёт CSS-transition.
-// Адаптивно: быстрый скролл — быстро, без фиксированного лага.
-function tourAfterScroll(cb) {
-  let lastY = window.scrollY, stable = 0, frames = 0;
-  (function check() {
+// Ставим позицию, пока идёт smooth-скролл, СЛЕДЯ за самим элементом каждый кадр.
+// Спотлайт «прилипает» к секции и едет вместе со скроллом (transition выключен,
+// чтобы не отставал). Когда элемент перестал двигаться — фиксируем и возвращаем
+// transition. Минимум кадров не даёт «застыть» до того как скролл реально начался.
+function tourTrack(el) {
+  const sp = document.getElementById('tourSpotlight');
+  const tt = document.getElementById('tourTooltip');
+  sp.style.transition = 'none';
+  tt.style.transition = 'none';
+
+  let lastTop = NaN, stable = 0, frames = 0;
+  (function step() {
+    tourPlace(el);
+    const top = el.getBoundingClientRect().top;
+    if (Math.abs(top - lastTop) < 0.5) stable++; else stable = 0;
+    lastTop = top;
     frames++;
-    const y = window.scrollY;
-    if (Math.abs(y - lastY) < 0.5) { if (++stable >= 3) return cb(); }
-    else stable = 0;
-    lastY = y;
-    if (frames > 50) return cb();  // страховка ~0.8 c
-    requestAnimationFrame(check);
+    // Ждём минимум 8 кадров (скролл успевает стартовать) + 4 стабильных,
+    // либо страховка ~1 c.
+    if ((frames >= 8 && stable >= 4) || frames > 60) {
+      sp.style.transition = '';
+      tt.style.transition = '';
+      return;
+    }
+    requestAnimationFrame(step);
   })();
 }
 
@@ -2752,7 +2764,7 @@ function tourRender() {
   if (!tourVisible(el)) { return window.tourNext(); }
   tourSetText(step);
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  tourAfterScroll(() => tourPlace(el));
+  tourTrack(el);
 }
 
 window.addEventListener('resize', () => {
