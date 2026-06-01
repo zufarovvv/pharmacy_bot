@@ -920,6 +920,18 @@ body {
   padding: 12px 0 0;
 }
 
+/* ===== ВО ВРЕМЯ ТУРА — скрываем продающие триггеры =====
+   Чтобы аптека спокойно прошла обучение без рекламных модалок и плашек,
+   при активном туре прячем советы, алерт-плашку, промо-оверлей, FAQ-кнопку.
+*/
+body.tour-active #adviceSection,
+body.tour-active #alertBar,
+body.tour-active #promoOverlay,
+body.tour-active #stickyCta,
+body.tour-active .faq-fab {
+  display: none !important;
+}
+
 /* ===== APP LOADER (полноэкранный спиннер при первой загрузке) ===== */
 .app-loader {
   position: fixed; inset: 0;

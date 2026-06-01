@@ -1541,6 +1541,8 @@ function showPromo(promo) {
   // Доп. защита: не показываем CTA-промо админам, даже если таймер успел
   // стартовать до того как роль была понятна.
   if (window.userData && window.userData.is_admin) return;
+  // И не отвлекаем юзера во время обучающего тура.
+  if (document.body.classList.contains('tour-active')) return;
   const overlay = document.getElementById('promoOverlay');
   if (!overlay) return;
   setTimeout(updateBackButton, 0);
@@ -2661,11 +2663,21 @@ const tourStepsConfig = [
 let tourIndex = 0;
 window.tourShowWelcome = function() { document.getElementById('tourWelcome').classList.add('active'); };
 function tourHideWelcome() { document.getElementById('tourWelcome').classList.remove('active'); }
-window.tourStart = function() { trackEvent('tour_started', {}); tourHideWelcome(); tourIndex = 0; document.getElementById('tourOverlay').classList.add('active'); tourRender(); };
+window.tourStart = function() {
+  trackEvent('tour_started', {});
+  tourHideWelcome();
+  tourIndex = 0;
+  // Пока идёт тур — прячем продающие триггеры (советы, алерт, промо, FAQ-кнопку),
+  // чтобы не отвлекали от обучения. См. CSS `body.tour-active`.
+  document.body.classList.add('tour-active');
+  document.getElementById('tourOverlay').classList.add('active');
+  tourRender();
+};
 window.tourFinish = function() {
   const wasActive = document.getElementById('tourOverlay').classList.contains('active');
   trackEvent(wasActive ? 'tour_finished' : 'tour_skipped', { step: tourIndex });
   tourHideWelcome();
+  document.body.classList.remove('tour-active');
   document.getElementById('tourOverlay').classList.remove('active');
   try { localStorage.setItem('datfo_tour_done', '1'); } catch (e) {}
 };
