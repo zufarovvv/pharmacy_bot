@@ -1,3 +1,15 @@
+import warnings
+# Глушим шум от устаревших зависимостей при запуске на Python 3.9 (macOS):
+#   • FutureWarning от google-auth / oauth2 ("Python 3.9 past EOL...")
+#   • urllib3 NotOpenSSLWarning ("LibreSSL 2.8.3, нужен OpenSSL 1.1.1+")
+# Это не ошибки, а напоминания обновить Python. Корневое решение —
+# `uv python install 3.12 && uv sync --python 3.12` (см. README).
+warnings.filterwarnings('ignore', category=FutureWarning, module=r'google\..*')
+warnings.filterwarnings('ignore', category=DeprecationWarning, module=r'google\..*')
+warnings.filterwarnings('ignore', message=r'.*LibreSSL.*')
+warnings.filterwarnings('ignore', message=r'.*urllib3 v2 only supports OpenSSL.*')
+warnings.filterwarnings('ignore', message=r'.*Python.*end of life.*')
+
 import asyncio
 import logging
 import logging.handlers

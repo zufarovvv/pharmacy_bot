@@ -21,6 +21,13 @@ Telegram-бот и Mini App для аналитики аптек DATFO. Поль
 uv sync
 ```
 
+> Если при запуске сыпятся `FutureWarning` про `Python 3.9 past EOL` или `LibreSSL 2.8.3` — у тебя локально Python 3.9. Зависимости уже хотят 3.12+. Корневое решение:
+> ```bash
+> uv python install 3.12
+> uv sync --python 3.12
+> ```
+> Без апгрейда работает, но шумит в логи. Шум в боте подавлен фильтрами в `bot.py`.
+
 ### 2. PostgreSQL локально
 
 ```bash
