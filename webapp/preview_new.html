@@ -1841,10 +1841,6 @@ body{
 .earn-bars.year{gap:4px;}
 .earn-bars.year .earn-bar-track{max-width:22px;}
 .earn-bar-val.hide{visibility:hidden;}
-/* столбики кликабельны — тап показывает сумму месяца */
-.earn-bar{cursor:pointer;-webkit-tap-highlight-color:transparent;}
-.earn-bar.sel .earn-bar-track{outline:2px solid var(--primary);outline-offset:2px;border-radius:8px;}
-.earn-bar.sel .earn-bar-val{color:var(--primary-dark)!important;font-weight:900;}
 /* --- новая аптека: бенчмарк «средний доход других аптек» --- */
 .biz-hero-label.new{background:var(--primary-bg);color:var(--primary-dark)!important;}
 .peer-illus{margin:10px 0 14px;}
@@ -2042,6 +2038,33 @@ html.income-open,body.income-open{overflow:hidden!important;height:100%;}
 </style>
 </head>
 <body>
+
+<style id="__preview_only">
+  html { background: #aeb6c2; }
+  body { max-width: 412px !important; margin: 0 auto !important; min-height: 100vh; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 30px 80px -20px rgba(0,0,0,0.4); }
+  #appLoader { max-width: 412px; left: 50%; transform: translateX(-50%); }
+  .income-overlay, .prod-overlay, .faq-overlay, .promo-overlay, .mgr-overlay { max-width: 412px; left: 50%; transform: translateX(-50%); }
+</style>
+<script>
+window.Telegram = { WebApp: { initData:'mock-preview', ready(){},expand(){},close(){},setBackgroundColor(){},setHeaderColor(){},setBottomBarColor(){},
+  BackButton:{show(){},hide(){},onClick(){}}, MainButton:{show(){},hide(){}}, openTelegramLink(u){window.open(u,'_blank');}, openLink(u){window.open(u,'_blank');} }};
+try { localStorage.setItem('datfo_lang','uz'); localStorage.setItem('datfo_tour_done','1'); localStorage.setItem('datfo_promo_seen','1'); } catch(e){}
+const MOCK_ME = {role:'user',is_admin:false,language:'uz',auth_source:'mock',tg_id:555002,pharmacies:[{inn:'412009988',business:'YANGI SHIFO MChJ',name:'Yangi Shifo',dashboard:{
+ region:'Toshkent',district:'Chilonzor',category:'Silver',manager:'Aziz Karimov',manager_phone:'+998 90 123 45 67',manager_username:'aziz_datfo',
+ stats:{completed:0,partial:0,critical:6},
+ totals:{quarter_plan:"90 000 000",quarter_percent:0,months:{january:{fact:"0",plan:"30 000 000",percent:0},february:{fact:"0",plan:"30 000 000",percent:0},march:{fact:"0",plan:"30 000 000",percent:0}}},
+ bonuses:{accrued:{amount:"0"},potential:{amount:"6 000 000"},completed:{amount:"0"}},
+ projects:[
+  {name:'KRKA',status:'critical',percent:0,fact:"0",quarter_plan:"16 000 000",bonus_amount:"2 400 000"},
+  {name:'KUSUM',status:'critical',percent:0,fact:"0",quarter_plan:"15 000 000",bonus_amount:"1 800 000"}
+ ]}}]};
+const _f=window.fetch;
+window.fetch=function(u,o){u=String(u);
+ if(u.includes('/api/me'))return new Promise(function(res){ setTimeout(function(){res(new Response(JSON.stringify(MOCK_ME),{status:200,headers:{'Content-Type':'application/json'}}));}, 500); });
+ if(u.includes('/api/track')||u.includes('/api/event'))return Promise.resolve(new Response('{}',{status:200,headers:{'Content-Type':'application/json'}}));
+ if(u.includes('/api/activity'))return Promise.resolve(new Response(JSON.stringify({events:[],total:0,users:0,by_type:{},top_pharm:[],top_users:[]}),{status:200,headers:{'Content-Type':'application/json'}}));
+ return _f.apply(this,arguments);};
+</script>
 
 <div class="app-loader" id="appLoader">
   <div class="app-loader-brands">
