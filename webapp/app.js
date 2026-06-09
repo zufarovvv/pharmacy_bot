@@ -2,14 +2,15 @@
 // DATFO Dashboard — клиентская логика. Bilingual (RU/UZ).
 // ============================================================
 
-const API_BASE = window.location.origin;
+// API_BASE: из config.js (для APK) либо текущий origin (Telegram / туннель / браузер).
+const API_BASE = (window.DATFO_API_BASE && String(window.DATFO_API_BASE).trim()) || window.location.origin;
 let userData = null;
 let currentPharm = null;     // Полные данные аптеки, чей дашборд сейчас открыт
 let currentPharmInn = null;  // ИНН аптеки, на которую сейчас смотрим (для трекинга)
 let allProjects = [];
 let currentFilter = 'all';
 let currentSearch = '';
-let currentLang = 'ru';
+let currentLang = 'uz';
 // Admin state
 let adminPharmacies = [];
 let adminManagers = [];
@@ -20,6 +21,47 @@ let adminMgrFilter = null; // имя менеджера для фильтра а
 let activityPeriodDays = 7;
 let activityCache = null;
 let mgrSort = 'avg_pct'; // 'avg_pct' | 'pharm_count' | 'bonus' | 'completed' | 'critical'
+
+// ============================================================
+// AUTH: Telegram initData ИЛИ токен логина (мобильное приложение)
+// ============================================================
+const APP_TOKEN_KEY = 'datfo_token';
+
+function getInitData() {
+  return (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || '';
+}
+function getAppToken() {
+  try { return localStorage.getItem(APP_TOKEN_KEY) || ''; } catch (e) { return ''; }
+}
+function setAppToken(tok) {
+  try { localStorage.setItem(APP_TOKEN_KEY, tok); } catch (e) {}
+}
+function clearAppToken() {
+  try { localStorage.removeItem(APP_TOKEN_KEY); } catch (e) {}
+}
+function getTgIdFromUrl() {
+  return new URLSearchParams(window.location.search).get('tg_id');
+}
+// Есть ли хоть какой-то способ авторизоваться (Telegram, токен, или dev-параметр)?
+function hasAnyAuth() {
+  return !!(getInitData() || getAppToken() || getTgIdFromUrl());
+}
+// Добавляет авторизацию к URL и возвращает заголовки. Приоритет: Telegram → токен → tg_id (dev).
+function applyAuth(url) {
+  const headers = { 'ngrok-skip-browser-warning': 'true' };
+  const initData = getInitData();
+  const token = getAppToken();
+  if (initData) {
+    url.searchParams.set('init_data', initData);
+    headers['X-Telegram-Init-Data'] = initData;
+  } else if (token) {
+    headers['Authorization'] = 'Bearer ' + token;
+  } else {
+    const tgId = getTgIdFromUrl();
+    if (tgId) url.searchParams.set('tg_id', tgId);
+  }
+  return headers;
+}
 
 // ============================================================
 // LANGUAGE DICTIONARY
@@ -118,6 +160,8 @@ const LANG = {
     pharmPartner: '✓ Партнёр DATFO',
     pctLabel: 'из плана',
     loaderHint: 'Загружаем данные...',
+    loaderPartner: 'В партнёрстве',
+    loaderSlogan: 'Ваш доход — наша задача',
     bizHeroEarnedYou: 'ВЫ ЗАРАБОТАЛИ С DATFO',
     bizHeroEarnedSubGrowth: 'за {n} мес · рост +{pct}% к началу',
     bizHeroEarnedSubFlat: 'за {n} мес работы',
@@ -127,6 +171,22 @@ const LANG = {
     bizSecRevenue: 'ПРОДАЖИ ЗА КВАРТАЛ',
     bizSecPotential: 'ДОПОЛНИТЕЛЬНЫЙ БОНУС',
     bizSecRevenueShort: 'ПРОДАЖИ',
+    earnHistCap: 'Ваш доход по месяцам',
+    earnHistCapYear: 'Доход по месяцам за год',
+    peerEyebrow: 'В СРЕДНЕМ ДРУГИЕ АПТЕКИ ЗАРАБОТАЛИ',
+    peerSub: 'столько за год с проектами DATFO. Вы тоже можете — начните участвовать.',
+    peerHook: 'Подключайтесь к проектам и зарабатывайте так же.',
+    peerCta: 'Узнать, с чего начать',
+    incomeBtn: 'Вся история заработка',
+    incomeTitle: 'Мои доходы',
+    incomeSub: 'Весь заработок с DATFO по периодам',
+    incomeMonths: 'По месяцам',
+    incomeProjects: 'По проектам',
+    incomeRowEarned: 'Начислено (сум)',
+    incomeRowBonus: 'Из них бонус DATFO',
+    incomeYearTotal: 'Заработано за {year}',
+    incomeEmpty: 'За этот период данных пока нет',
+    earnHistHook: 'Каждый месяц DATFO приносил вам доход — следующий квартал не исключение.',
     adviceTitle: 'Совет от FOM',
     adviceSectionTitle: 'РЕКОМЕНДАЦИИ',
     adviceCompetitorTitle: 'Замените {comp} на {prod}',
@@ -341,6 +401,8 @@ const LANG = {
     pharmPartner: '✓ DATFO sherigi',
     pctLabel: 'rejadan',
     loaderHint: 'Yuklanmoqda...',
+    loaderPartner: 'Hamkorlikda',
+    loaderSlogan: "Daromadingiz — bizning vazifamiz",
     bizHeroEarnedYou: 'DATFO BILAN TOPDINGIZ',
     bizHeroEarnedSubGrowth: "{n} oyda · boshlanishidan +{pct}% oshdi",
     bizHeroEarnedSubFlat: "{n} oy birgalikda",
@@ -350,6 +412,22 @@ const LANG = {
     bizSecRevenue: "CHORAK SOTUVI",
     bizSecPotential: "QO'SHIMCHA BONUS",
     bizSecRevenueShort: 'SOTUV',
+    earnHistCap: 'Oyma-oy daromadingiz',
+    earnHistCapYear: 'Yil davomida oylik daromad',
+    peerEyebrow: "BOSHQA DORIXONALAR OʻRTACHA TOPGAN",
+    peerSub: "bir yilda DATFO loyihalari bilan. Siz ham shunday qila olasiz — qatnashishni boshlang.",
+    peerHook: 'Loyihalarga qoʻshiling va xuddi shunday daromad oling.',
+    peerCta: 'Nimadan boshlashni bilish',
+    incomeBtn: 'Butun daromad tarixi',
+    incomeTitle: 'Mening daromadim',
+    incomeSub: "DATFO bilan butun daromad — davrlar boʻyicha",
+    incomeMonths: 'Oylar',
+    incomeProjects: 'Loyihalar',
+    incomeRowEarned: "Hisoblangan daromad (so'm)",
+    incomeRowBonus: 'Shundan DATFO bonusi',
+    incomeYearTotal: '{year}-yilda topdingiz',
+    incomeEmpty: "Bu davr uchun hozircha ma'lumot yo'q",
+    earnHistHook: "Har oy DATFO hisobingizga pul keltirdi — keyingi chorak ham shunday boʻladi.",
     adviceTitle: 'FOM maslahati',
     adviceSectionTitle: 'MASLAHATLAR',
     adviceCompetitorTitle: "{comp} o'rniga {prod} oling",
@@ -489,6 +567,11 @@ window.setLang = function(lang) {
   if (prodOverlay && prodOverlay.classList.contains('active') && currentProductsProject) {
     window.showProjectProducts(currentProductsProject);
   }
+  // История заработка открыта — перерисовываем на новом языке
+  const incOverlay = document.getElementById('incomeOverlay');
+  if (incOverlay && incOverlay.classList.contains('active')) {
+    renderIncomeSheet();
+  }
 };
 
 function detectLang() {
@@ -497,8 +580,8 @@ function detectLang() {
     if (saved === 'ru' || saved === 'uz') return saved;
   } catch (e) {}
   const fromUser = userData && userData.language;
-  if (fromUser === 'uz') return 'uz';
-  return 'ru';
+  if (fromUser === 'ru') return 'ru';
+  return 'uz';
 }
 
 // ============================================================
@@ -539,6 +622,7 @@ function getActiveOverlay() {
     { el: document.getElementById('promoOverlay'),    close: window.closePromo },
     { el: document.getElementById('mgrOverlay'),      close: () => window.closeManager && window.closeManager() },
     { el: document.getElementById('productsOverlay'), close: window.closeProducts },
+    { el: document.getElementById('incomeOverlay'),   close: () => window.closeEarningsHistory && window.closeEarningsHistory() },
     { el: document.getElementById('faqOverlay'),      close: window.closeFaq },
   ];
   for (const o of candidates) {
@@ -590,26 +674,104 @@ async function main() {
 }
 
 // ============================================================
+// ЭКРАН ВХОДА (логин/пароль — мобильное приложение вне Telegram)
+// ============================================================
+const LOGIN_TEXT = {
+  ru: { subtitle: 'Вход в аккаунт', user: 'Логин', pass: 'Пароль', btn: 'Войти', wait: 'Входим…',
+        empty: 'Введите логин и пароль', invalid: 'Неверный логин или пароль', fail: 'Ошибка сети, попробуйте ещё раз' },
+  uz: { subtitle: 'Hisobga kirish', user: 'Login', pass: 'Parol', btn: 'Kirish', wait: 'Kirilyapti…',
+        empty: "Login va parolni kiriting", invalid: "Login yoki parol noto'g'ri", fail: "Tarmoq xatosi, qayta urinib ko'ring" },
+};
+function loginT(k) { return (LOGIN_TEXT[currentLang] || LOGIN_TEXT.ru)[k]; }
+
+function showLoginScreen() {
+  const scr = document.getElementById('loginScreen');
+  if (!scr) return;
+  const sub = document.getElementById('loginSubtitle'); if (sub) sub.textContent = loginT('subtitle');
+  const li = document.getElementById('loginInput'); if (li) li.placeholder = loginT('user');
+  const pi = document.getElementById('passwordInput'); if (pi) pi.placeholder = loginT('pass');
+  const btn = document.getElementById('loginBtn'); if (btn) { btn.textContent = loginT('btn'); btn.disabled = false; }
+  const err = document.getElementById('loginError'); if (err) err.textContent = '';
+  scr.style.display = 'flex';
+  [li, pi].forEach(el => {
+    if (el && !el._loginBound) {
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') submitLogin(); });
+      el._loginBound = true;
+    }
+  });
+  if (li) li.focus();
+}
+
+function hideLoginScreen() {
+  const scr = document.getElementById('loginScreen');
+  if (scr) scr.style.display = 'none';
+}
+
+async function submitLogin() {
+  const li = document.getElementById('loginInput');
+  const pi = document.getElementById('passwordInput');
+  const err = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+  const login = ((li && li.value) || '').trim();
+  const password = ((pi && pi.value) || '');
+  if (err) err.textContent = '';
+  if (!login || !password) { if (err) err.textContent = loginT('empty'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = loginT('wait'); }
+  try {
+    const res = await fetch(API_BASE + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+      body: JSON.stringify({ login, password }),
+    });
+    if (!res.ok) {
+      if (err) err.textContent = loginT('invalid');
+      if (btn) { btn.disabled = false; btn.textContent = loginT('btn'); }
+      return;
+    }
+    const data = await res.json();
+    setAppToken(data.token);
+    if (pi) pi.value = '';
+    hideLoginScreen();
+    showAppLoaderOverlay();
+    await loadUserData();
+  } catch (e) {
+    if (err) err.textContent = loginT('fail');
+    if (btn) { btn.disabled = false; btn.textContent = loginT('btn'); }
+  }
+}
+window.submitLogin = submitLogin;
+
+window.logout = function () {
+  const token = getAppToken();
+  if (token) {
+    fetch(API_BASE + '/api/auth/logout', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'ngrok-skip-browser-warning': 'true' },
+    }).catch(() => {});
+  }
+  clearAppToken();
+  location.reload();
+};
+
+// ============================================================
 // DATA FETCH
 // ============================================================
 async function loadUserData() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const tgIdFromUrl = urlParams.get('tg_id');
-  const initData = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || '';
+  // Нет ни Telegram, ни токена, ни dev-параметра → показываем экран входа.
+  if (!hasAnyAuth()) { hideAppLoader(); showLoginScreen(); return; }
 
   const url = new URL(API_BASE + '/api/me');
-  if (initData) url.searchParams.set('init_data', initData);
-  else if (tgIdFromUrl) url.searchParams.set('tg_id', tgIdFromUrl);
-  else { hideAppLoader(); renderError(t('errNoTg')); return; }
+  const headers = applyAuth(url);
 
   try {
-    const res = await fetch(url, {
-      headers: {
-        'ngrok-skip-browser-warning': 'true',
-        ...(initData ? { 'X-Telegram-Init-Data': initData } : {})
-      }
-    });
+    const res = await fetch(url, { headers });
     if (!res.ok) {
+      if (res.status === 401 && getAppToken()) {
+        clearAppToken();
+        hideAppLoader();
+        showLoginScreen();
+        return;
+      }
       const txt = await res.text();
       hideAppLoader();
       renderError(`API ${res.status}: ${txt}`);
@@ -618,6 +780,8 @@ async function loadUserData() {
     userData = await res.json();
     window.userData = userData;
     hideAppLoader();
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) logoutBtn.style.display = getAppToken() ? '' : 'none';
     trackEvent('app_open', {
       role: userData.role,
       is_admin: !!userData.is_admin,
@@ -626,13 +790,15 @@ async function loadUserData() {
     });
     // Если язык не был сохранён вручную — взять из профиля БД
     try {
-      if (!localStorage.getItem('datfo_lang') && userData.language === 'uz') {
-        currentLang = 'uz';
-        applyLang();
+      if (!localStorage.getItem('datfo_lang') && userData.language) {
+        const lng = userData.language === 'ru' ? 'ru' : 'uz';
+        if (lng !== currentLang) { currentLang = lng; applyLang(); }
       }
     } catch (e) {}
     console.log('[app.js] User data:', userData);
     render(userData);
+    // После входа по логину окно 'load' уже отработало — триггерим тур вручную.
+    maybeShowTour();
   } catch (e) {
     console.error('[app.js] fetch failed:', e);
     hideAppLoader();
@@ -824,19 +990,10 @@ window.selectPharmacy = async function(inn) {
   showDashboardView(true);  // показываем экран с лоадер-стейтом
   showAppLoaderOverlay();   // короткий лоадер пока тянем
   try {
-    const initData = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || '';
-    const urlParams = new URLSearchParams(window.location.search);
-    const tgIdFromUrl = urlParams.get('tg_id');
     const url = new URL(API_BASE + '/api/pharmacy/' + encodeURIComponent(inn));
-    if (initData) url.searchParams.set('init_data', initData);
-    else if (tgIdFromUrl) url.searchParams.set('tg_id', tgIdFromUrl);
+    const headers = applyAuth(url);
 
-    const res = await fetch(url, {
-      headers: {
-        'ngrok-skip-browser-warning': 'true',
-        ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
-      },
-    });
+    const res = await fetch(url, { headers });
     if (!res.ok) throw new Error('API ' + res.status);
     const full = await res.json();
     pharmacyFullCache[inn] = full;
@@ -927,20 +1084,11 @@ async function loadAndRenderActivity() {
   root.innerHTML = renderActivityShell(null); // показываем shell с лоадером
 
   try {
-    const initData = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || '';
-    const urlParams = new URLSearchParams(window.location.search);
-    const tgIdFromUrl = urlParams.get('tg_id');
     const url = new URL(API_BASE + '/api/admin/stats');
     url.searchParams.set('days', String(activityPeriodDays));
-    if (initData) url.searchParams.set('init_data', initData);
-    else if (tgIdFromUrl) url.searchParams.set('tg_id', tgIdFromUrl);
+    const headers = applyAuth(url);
 
-    const res = await fetch(url, {
-      headers: {
-        'ngrok-skip-browser-warning': 'true',
-        ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
-      },
-    });
+    const res = await fetch(url, { headers });
     if (!res.ok) {
       root.innerHTML = renderActivityShell({ error: 'API ' + res.status });
       return;
@@ -1229,7 +1377,7 @@ function renderPharmacy(pharm, d) {
   const meta = [];
   if (d.region) meta.push(d.region);
   if (d.district) meta.push(d.district);
-  if (pharm.inn) meta.push('ИНН ' + pharm.inn);
+  if (pharm.inn) meta.push((currentLang === 'uz' ? 'INN ' : 'ИНН ') + pharm.inn);
   setText('#pharmMeta', meta.join(' · ') || '—');
 
   // Большой процент справа
@@ -1265,31 +1413,27 @@ function renderIncome(d) {
 function generateEarningsHistory(inn, monthsCount) {
   const months = monthsCount || 8;
   const h = simpleHash((inn || 'demo') + ':earnings');
-  // База — 400K..1.6M на первый месяц
-  const base = 400000 + (h % 1200) * 1000;
-  // Тренд: 0.94..1.18 в месяц (от лёгкого спада до уверенного роста)
-  const trendBucket = (h >> 5) % 100;
-  const monthlyTrend = trendBucket < 10 ? 0.94 + (trendBucket / 100)         // 10% — лёгкий спад
-                     : trendBucket < 40 ? 0.98 + ((trendBucket - 10) / 300)  // 30% — флэт
-                                        : 1.02 + ((trendBucket - 40) / 100); // остальное — рост
+  // База ~ 1.2M..3.2M в месяц (реалистично для аптеки)
+  const base = 1200000 + (h % 200) * 10000;
+  // Лёгкий устойчивый рост: +2.0%..+6.0% в месяц (история всегда позитивна)
+  const trend = 1.020 + ((h >> 6) % 40) / 1000;
   const values = [];
   let cur = base;
   for (let i = 0; i < months; i++) {
-    // Лёгкий шум 0.85..1.15 — чтобы не было идеальной прямой
-    const noiseBucket = (h >> (i * 4)) & 0xff;
-    const noise = 0.85 + (noiseBucket % 31) / 100;
-    values.push(Math.round(cur * noise));
-    cur *= monthlyTrend;
+    // Узкий шум 0.96..1.04 — живая линия, но тренд всегда виден вверх
+    const noise = 0.96 + (simpleHash((inn || 'demo') + ':m' + i) % 9) / 100;
+    values.push(Math.round(cur * noise / 10000) * 10000);
+    cur *= trend;
   }
   const total = values.reduce((a, b) => a + b, 0);
   const first = values[0];
   const last = values[values.length - 1];
   const growthPct = first > 0 ? Math.round((last - first) / first * 100) : 0;
 
-  // "А могли ещё больше" — стабильный упущенный потенциал, 35-65% от заработанного.
+  // "А могли ещё больше" — стабильный упущенный потенциал, 30-54% от заработанного.
   const h2 = simpleHash((inn || 'demo') + ':couldhave');
-  const lossFactor = 0.35 + (h2 % 30) / 100;  // 0.35..0.65
-  const couldHave = Math.round(total * lossFactor);
+  const lossFactor = 0.30 + (h2 % 25) / 100;
+  const couldHave = Math.round(total * lossFactor / 10000) * 10000;
 
   return { values, total, months, growthPct, avg: Math.round(total / months), couldHave };
 }
@@ -1325,9 +1469,58 @@ function renderSparkline(values, opts) {
   `;
 }
 
+// Бенчмарк для новой аптеки: средний годовой доход «других аптек».
+// Считаем от потенциального бонуса/плана квартала ×4 квартала; стабильный фолбэк по ИНН.
+function computePeerBenchmark(d, inn) {
+  const totals = d.totals || {};
+  const bonuses = d.bonuses || {};
+  const potential = parseMoney((bonuses.potential && bonuses.potential.amount) || '');
+  const plan = parseMoney(totals.quarter_plan || '');
+  let base = potential > 0 ? potential * 4
+           : plan > 0 ? Math.round(plan * 0.16 * 4)
+           : 0;
+  if (base <= 0) {
+    const h = simpleHash((inn || 'demo') + ':peer');
+    base = (18 + h % 17) * 1000000; // 18–34 млн/год
+  }
+  return Math.round(base / 100000) * 100000;
+}
+
+// Абстрактный растущий бар-силуэт «средний доход аптек» (data-viz, не картинка).
+function peerBarsSvg() {
+  const hs = [40, 54, 47, 66, 58, 80, 72, 96];
+  const bw = 22, gap = 11, h = 100;
+  const w = hs.length * (bw + gap) - gap;
+  const bars = hs.map((bh, i) => {
+    const x = i * (bw + gap), y = h - bh;
+    return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="6" fill="url(#peerGrad)" opacity="${(0.38 + i * 0.08).toFixed(2)}"/>`;
+  }).join('');
+  return `<svg class="peer-bars" viewBox="0 0 ${w} ${h}" width="100%" height="90" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+    <defs><linearGradient id="peerGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#13B863"/><stop offset="1" stop-color="#0A8F49"/>
+    </linearGradient></defs>${bars}</svg>`;
+}
+
+// Тап по столбику года — показать сумму этого месяца (одна активная за раз)
+window.showEarnBarVal = function (el) {
+  const wrap = el.closest('.earn-bars');
+  if (!wrap) return;
+  wrap.querySelectorAll('.earn-bar').forEach(b => {
+    b.classList.remove('sel');
+    if (!b.classList.contains('peak')) {
+      const v = b.querySelector('.earn-bar-val');
+      if (v) v.classList.add('hide');
+    }
+  });
+  el.classList.add('sel');
+  const v = el.querySelector('.earn-bar-val');
+  if (v) v.classList.remove('hide');
+};
+
 function renderBizHero(d) {
   const bonuses = d.bonuses || {};
   const totals = d.totals || {};
+  const stats = d.stats || {};
   const accrued = parseMoney((bonuses.accrued && bonuses.accrued.amount) || '');
   const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
 
@@ -1338,29 +1531,64 @@ function renderBizHero(d) {
     revenue += parseMoney((months[m] && months[m].fact) || '0');
   });
 
-  // === HERO === — история доходов за 8 месяцев работы с DATFO (демо)
   const innStr = currentPharmInn || (currentPharm && currentPharm.inn) || 'demo';
-  const earnings = generateEarningsHistory(String(innStr), 8);
-
-  // Подпись только в двух вариантах: рост / стабильно.
-  // Вариант с "вернём рост" убран — это история, всегда позитив.
-  let subKey = 'bizHeroEarnedSubFlat';
-  if (earnings.growthPct >= 5) subKey = 'bizHeroEarnedSubGrowth';
+  // Новая аптека — ещё не заработала с проектов DATFO
+  const isNew = accrued <= 0 && Number(stats.completed || 0) <= 0 && revenue <= 0;
 
   const heroEl = document.getElementById('bizHero');
   if (heroEl) {
-    heroEl.className = 'biz-hero success';  // всегда позитив — это история
-    const amountClass = earnings.total >= 10000000 ? 'medium' : '';
-    heroEl.innerHTML = `
-      <div class="biz-hero-label">${t('bizHeroEarnedYou')}</div>
-      <div class="biz-hero-amount ${amountClass}">${formatMoney(earnings.total)} ${moneyLabel}</div>
-      <div class="biz-hero-sub">${t(subKey, { n: earnings.months, pct: Math.abs(earnings.growthPct) })}</div>
-      <div class="biz-hero-chart">${renderSparkline(earnings.values, { width: 240, height: 44 })}</div>
-      <button class="biz-hero-could" onclick="adviceCtaClick('could-have-more', 'history')">
-        <span class="biz-hero-could-icon">💡</span>
-        <span class="biz-hero-could-text">${t('bizHeroCould', { amount: formatMoney(earnings.couldHave), money: moneyLabel })}</span>
-      </button>
-    `;
+    heroEl.className = 'biz-hero success';
+
+    if (isNew) {
+      // ===== НОВАЯ АПТЕКА — социальное доказательство (средний доход других) =====
+      const peerAvg = computePeerBenchmark(d, String(innStr));
+      heroEl.innerHTML = `
+        <div class="biz-hero-label new">${t('peerEyebrow')}</div>
+        <div class="peer-illus">${peerBarsSvg()}</div>
+        <div class="biz-hero-amount medium peer-amount">${formatMoney(peerAvg)} ${moneyLabel}</div>
+        <div class="biz-hero-sub peer-sub">${t('peerSub')}</div>
+        <div class="earn-hook"><span class="earn-hook-icon">🚀</span><span>${t('peerHook')}</span></div>
+        <button class="biz-hero-could" onclick="adviceCtaClick('start-earning', 'new')">
+          <span class="biz-hero-could-icon">💡</span>
+          <span class="biz-hero-could-text">${t('peerCta')} →</span>
+        </button>
+      `;
+    } else {
+      // ===== ЕСТЬ ИСТОРИЯ — годовой доход по месяцам (12 мес) =====
+      const earnings = generateEarningsHistory(String(innStr), 12);
+      const subKey = earnings.growthPct >= 5 ? 'bizHeroEarnedSubGrowth' : 'bizHeroEarnedSubFlat';
+      const amountClass = earnings.total >= 10000000 ? 'medium' : '';
+      const vals = earnings.values;
+      const maxV = Math.max(...vals, 1);
+      const peakIdx = vals.indexOf(Math.max(...vals));
+      const labels = lastMonthLabelsShort(vals.length);
+      const barsHtml = vals.map((v, i) => {
+        const hPct = Math.max(14, Math.round(v / maxV * 100));
+        // На годовом графике (12 столбиков) подписываем только лучший месяц — чище
+        const showVal = (i === peakIdx);
+        return `
+        <div class="earn-bar ${i === peakIdx ? 'peak' : ''}" onclick="showEarnBarVal(this)">
+          <div class="earn-bar-val${showVal ? '' : ' hide'}">${compactMoney(v)}</div>
+          <div class="earn-bar-track"><div class="earn-bar-fill" style="height: ${hPct}%;"></div></div>
+          <div class="earn-bar-month">${labels[i]}</div>
+        </div>`;
+      }).join('');
+      heroEl.innerHTML = `
+        <div class="biz-hero-label">${t('bizHeroEarnedYou')}</div>
+        <div class="biz-hero-amount ${amountClass}">${formatMoney(earnings.total)} ${moneyLabel}</div>
+        <div class="biz-hero-sub">${t(subKey, { n: earnings.months, pct: Math.abs(earnings.growthPct) })}</div>
+        <div class="earn-history">
+          <div class="earn-history-cap">${t('earnHistCapYear')}</div>
+          <div class="earn-bars year">${barsHtml}</div>
+        </div>
+        <button class="earn-history-btn" onclick="openEarningsHistory()">${t('incomeBtn')} →</button>
+        <div class="earn-hook"><span class="earn-hook-icon">📈</span><span>${t('earnHistHook')}</span></div>
+        <button class="biz-hero-could" onclick="adviceCtaClick('could-have-more', 'history')">
+          <span class="biz-hero-could-icon">💡</span>
+          <span class="biz-hero-could-text">${t('bizHeroCould', { amount: formatMoney(earnings.couldHave), money: moneyLabel })}</span>
+        </button>
+      `;
+    }
   }
 
   // === SECONDARY === — 2 карточки: бонус за текущий квартал + продажи квартала
@@ -1377,6 +1605,157 @@ function renderBizHero(d) {
       </div>
     `;
   }
+}
+
+// ============================================================
+// INCOME HISTORY — детальная история заработка (шторка с фильтрами)
+// Стиль референса: помесячные карточки, маскировка сумм по «глазу».
+// ============================================================
+let incomeYear = null, incomeMode = 'month', incomeMasked = true, incomeData = null;
+
+function _incomeMonthNames() {
+  return currentLang === 'uz'
+    ? ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr']
+    : ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+}
+
+// Доход = ТОЛЬКО бонус DATFO, и только с проектов, достигших 100%.
+// Пока проект < 100% — дохода нет; на 100% начисляется весь бонус проекта.
+// Текущий год — из реальных проектов; прошлые годы — стабильный плейсхолдер.
+function generateIncomeDetail(inn, projects) {
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth();
+  const real = projects || [];
+  const names = real.length ? real.map(p => p.name) : ['KRKA','KUSUM','NOBEL','EGIS','GEDEON'];
+  const years = [];
+  for (let y = 0; y < 3; y++) {
+    const year = curYear - y;
+    const lastMonth = (y === 0) ? curMonth : 11;
+    let projList;
+    if (y === 0 && real.length) {
+      // Реальные данные: доход только с проектов на 100%+ (весь бонус)
+      projList = real
+        .filter(p => Number(p.percent || 0) >= 100)
+        .map(p => ({ name: p.name, amount: parseMoney(p.bonus_amount || '0') }))
+        .filter(p => p.amount > 0);
+    } else {
+      // Прошлые годы — завершённые проекты (плейсхолдер по ИНН)
+      const h = simpleHash((inn || 'demo') + ':py' + year);
+      projList = names.slice(0, 3 + (h % 3)).map(n => ({
+        name: n,
+        amount: Math.round((800000 + (simpleHash((inn || 'demo') + ':pb' + year + n) % 2200) * 1000) / 10000) * 10000,
+      }));
+    }
+    const total = projList.reduce((a, b) => a + b.amount, 0);
+    // Каждый завершённый проект начисляется в свой месяц (детерминированно)
+    const months = Array.from({ length: 12 }, (_, m) => ({ m, amount: 0 }));
+    projList.forEach(p => {
+      const mo = simpleHash((inn || 'demo') + ':pm' + year + p.name) % (lastMonth + 1);
+      months[mo].amount += p.amount;
+    });
+    years.push({ year, total, months, projects: projList.slice().sort((a, b) => b.amount - a.amount) });
+  }
+  return years;
+}
+
+function _incMask(v) {
+  return incomeMasked ? '•••••••' : (formatMoney(v) + ' ' + (currentLang === 'uz' ? "so'm" : 'сум'));
+}
+const _eyeSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-8 10-8 10 8 10 8-3 8-10 8-10-8-10-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const _eyeOffSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a13.16 13.16 0 0 1-1.67 2.68M6.6 6.6A13.5 13.5 0 0 0 2 12s3 8 10 8a9.7 9.7 0 0 0 5.4-1.6"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+
+window.openEarningsHistory = function () {
+  trackEvent('income_open', {});
+  const d = (currentPharm && currentPharm.dashboard) || {};
+  const inn = currentPharmInn || (currentPharm && currentPharm.inn) || 'demo';
+  incomeData = generateIncomeDetail(String(inn), d.projects || []);
+  if (incomeYear == null || !incomeData.some(x => x.year === incomeYear)) incomeYear = incomeData[0].year;
+  incomeMode = 'month'; incomeMasked = true;
+  renderIncomeSheet();
+  const o = document.getElementById('incomeOverlay');
+  if (o) o.classList.add('active');
+  document.documentElement.classList.add('income-open'); // заморозить фон
+  document.body.classList.add('income-open');
+  updateBackButton();
+};
+window.closeEarningsHistory = function () {
+  const o = document.getElementById('incomeOverlay');
+  if (o) o.classList.remove('active');
+  document.documentElement.classList.remove('income-open');
+  document.body.classList.remove('income-open');
+  updateBackButton();
+};
+window.setIncomeYear = function (y) { incomeYear = y; updateIncomeContent(); };
+window.setIncomeMode = function (mode) { incomeMode = mode; updateIncomeContent(); };
+window.toggleIncomeMask = function () { incomeMasked = !incomeMasked; updateIncomeContent(); };
+
+// Строим «скелет» шторки один раз (заголовок, контейнеры). Контент — отдельно.
+function renderIncomeSheet() {
+  const o = document.getElementById('incomeOverlay');
+  if (!o || !incomeData) return;
+  o.innerHTML = `
+    <div class="inc-sheet">
+      <div class="inc-head">
+        <button class="inc-back" onclick="closeEarningsHistory()" aria-label="back">‹</button>
+        <div class="inc-title">${t('incomeTitle')}</div>
+        <button class="inc-eye" id="incEye" onclick="toggleIncomeMask()" aria-label="toggle"></button>
+      </div>
+      <div class="inc-sub">${t('incomeSub')}</div>
+      <div class="inc-filters" id="incFilters"></div>
+      <div class="inc-modes" id="incModes"></div>
+      <div class="inc-summary">
+        <div class="inc-summary-label" id="incSummaryLabel"></div>
+        <div class="inc-summary-val" id="incSummaryVal"></div>
+      </div>
+      <div class="inc-list" id="incList"></div>
+    </div>`;
+  updateIncomeContent();
+}
+
+// Обновляем ТОЛЬКО изменяемые части — контейнер прокрутки не пересоздаётся,
+// поэтому окно остаётся статичным (без прыжков) при нажатии на кнопки.
+function updateIncomeContent() {
+  const o = document.getElementById('incomeOverlay');
+  if (!o || !incomeData) return;
+  const yr = incomeData.find(x => x.year === incomeYear) || incomeData[0];
+  const names = _incomeMonthNames();
+
+  const filters = document.getElementById('incFilters');
+  if (filters) filters.innerHTML = incomeData.map(x =>
+    `<button class="inc-chip ${x.year === incomeYear ? 'active' : ''}" onclick="setIncomeYear(${x.year})">${x.year}</button>`).join('');
+
+  const modes = document.getElementById('incModes');
+  if (modes) modes.innerHTML =
+    `<button class="inc-mode ${incomeMode === 'month' ? 'active' : ''}" onclick="setIncomeMode('month')">${t('incomeMonths')}</button>` +
+    `<button class="inc-mode ${incomeMode === 'project' ? 'active' : ''}" onclick="setIncomeMode('project')">${t('incomeProjects')}</button>`;
+
+  const eye = document.getElementById('incEye');
+  if (eye) { eye.className = 'inc-eye' + (incomeMasked ? '' : ' on'); eye.innerHTML = incomeMasked ? _eyeOffSvg : _eyeSvg; }
+
+  const sl = document.getElementById('incSummaryLabel');
+  if (sl) sl.textContent = t('incomeYearTotal', { year: incomeYear });
+  const sv = document.getElementById('incSummaryVal');
+  if (sv) sv.textContent = _incMask(yr.total);
+
+  let listHtml = '';
+  if (incomeMode === 'month') {
+    const rows = yr.months.filter(mo => mo.amount > 0).reverse();
+    listHtml = rows.length ? rows.map(mo => `
+      <div class="inc-card">
+        <div class="inc-card-title">${names[mo.m]}</div>
+        <div class="inc-row"><span class="inc-label">${t('incomeRowEarned')}</span><span class="inc-amount earn">${_incMask(mo.amount)}</span></div>
+      </div>`).join('') : `<div class="inc-empty">${t('incomeEmpty')}</div>`;
+  } else {
+    const rows = yr.projects.filter(p => p.amount > 0);
+    listHtml = rows.length ? rows.map(p => `
+      <div class="inc-card">
+        <div class="inc-card-title">${escapeHtml(p.name)}</div>
+        <div class="inc-row"><span class="inc-label">${t('incomeRowEarned')}</span><span class="inc-amount earn">${_incMask(p.amount)}</span></div>
+      </div>`).join('') : `<div class="inc-empty">${t('incomeEmpty')}</div>`;
+  }
+  const list = document.getElementById('incList');
+  if (list) list.innerHTML = listHtml;
 }
 
 // ============================================================
@@ -1399,8 +1778,23 @@ function renderAlertBar(d) {
   const critical = stats.critical || 0;
   const pct = d.totals && d.totals.quarter_percent;
 
+  // Новая аптека — ещё не заработала: зовём в крупные проекты, без «вы отстаёте»
+  const months = (d.totals && d.totals.months) || d.months || {};
+  let revenue = 0;
+  ['january', 'february', 'march'].forEach(m => { revenue += parseMoney((months[m] && months[m].fact) || '0'); });
+  const isNew = accrued <= 0 && (stats.completed || 0) <= 0 && revenue <= 0;
+
   bar.className = 'alert-bar';
-  if (critical > 0) {
+  if (isNew) {
+    bar.classList.add('opportunity');
+    bar.style.display = '';
+    icon.textContent = '💎';
+    txt.innerHTML = (currentLang === 'uz'
+      ? `Yirik loyihalarga qo'shiling — <b>katta daromad</b> imkoniyati`
+      : `Подключайтесь к крупным проектам — <b>большой доход</b>`);
+    currentAlertContext = 'new';
+    scheduleAlertNudges();
+  } else if (critical > 0) {
     bar.classList.add('danger');
     bar.style.display = '';
     icon.textContent = '🔴';
@@ -1429,6 +1823,25 @@ function renderAlertBar(d) {
     bar.style.display = 'none';
     currentAlertContext = null;
   }
+}
+
+// Привлекаем внимание к алерту 3 раза: на 20-й сек, 1-й и 3-й минуте.
+let alertNudgesScheduled = false;
+function scheduleAlertNudges() {
+  if (alertNudgesScheduled) return;
+  alertNudgesScheduled = true;
+  const fire = () => {
+    const bar = document.getElementById('alertBar');
+    if (!bar || bar.style.display === 'none') return;
+    if (document.body.classList.contains('tour-active')) return; // не мешаем туру
+    bar.classList.remove('nudge');
+    void bar.offsetWidth; // перезапуск анимации
+    bar.classList.add('nudge');
+    setTimeout(() => bar.classList.remove('nudge'), 1600);
+  };
+  setTimeout(fire, 20000);
+  setTimeout(fire, 60000);
+  setTimeout(fire, 180000);
 }
 
 window.alertBarClick = function() {
@@ -1727,10 +2140,10 @@ function renderProjects() {
     return `
       <div class="project-row" onclick="showProjectProducts('${escapeHtml(p.name).replace(/'/g, "\\'")}')">
         <div class="project-name">${escapeHtml(p.name)}</div>
-        <div class="project-plan">${escapeHtml(p.quarter_plan || p.plan || '—')}</div>
-        <div class="project-fact">${escapeHtml(p.fact || '—')}</div>
+        <div class="project-plan">${planVal > 0 ? compactMoney(planVal) : '—'}</div>
+        <div class="project-fact">${factVal > 0 ? compactMoney(factVal) : '—'}</div>
         <div class="project-percent ${cls}">${pct}%</div>
-        <div class="project-bonus">${escapeHtml(p.bonus_amount || '0')}</div>
+        <div class="project-bonus">${bonusVal > 0 ? compactMoney(bonusVal) : '0'}</div>
         ${lostBlock}
       </div>`;
   }).join('');
@@ -2026,20 +2439,13 @@ window.sendAiQuestion = async function() {
   if (sendBtn) sendBtn.disabled = true;
 
   try {
-    const initData = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || '';
-    const urlParams = new URLSearchParams(window.location.search);
-    const tgIdFromUrl = urlParams.get('tg_id');
     const url = new URL(API_BASE + '/api/ai/ask');
-    if (initData) url.searchParams.set('init_data', initData);
-    else if (tgIdFromUrl) url.searchParams.set('tg_id', tgIdFromUrl);
+    const headers = applyAuth(url);
+    headers['Content-Type'] = 'application/json';
 
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-        ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
-      },
+      headers,
       body: JSON.stringify({ question: q }),
     });
     const data = await res.json();
@@ -2771,17 +3177,21 @@ window.addEventListener('resize', () => {
   if (!document.getElementById('tourOverlay').classList.contains('active')) return;
   const step = tourSteps[tourIndex];
   const el = step && document.querySelector(step.sel);
-  if (el) tourPlace(el);  // на ресайз — мгновенно, без ожидания скролла
+  if (el) tourPlace(el);  // на ресайз — mgновенно, без ожидания скролла
 });
 
-window.addEventListener('load', () => {
+// Показываем онбординг-тур только вошедшему обычному юзеру (не на экране входа, не админу).
+function maybeShowTour() {
   setTimeout(() => {
     try {
-      if (userData && userData.is_admin) return; // админам тур не нужен
+      if (!userData) return;             // не авторизован (виден экран входа) — без тура
+      if (userData.is_admin) return;     // админам тур не нужен
       if (!localStorage.getItem('datfo_tour_done')) window.tourShowWelcome();
-    } catch (e) { window.tourShowWelcome(); }
+    } catch (e) { /* тур не критичен */ }
   }, 800);
-});
+}
+
+window.addEventListener('load', maybeShowTour);
 
 // ============================================================
 // UTILS
@@ -2796,12 +3206,9 @@ function setText(selector, value) {
 // ============================================================
 function trackEvent(name, payload) {
   try {
-    const initData = (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) || '';
-    const urlParams = new URLSearchParams(window.location.search);
-    const tgIdFromUrl = urlParams.get('tg_id');
     const url = new URL(API_BASE + '/api/events');
-    if (initData) url.searchParams.set('init_data', initData);
-    else if (tgIdFromUrl) url.searchParams.set('tg_id', tgIdFromUrl);
+    const headers = applyAuth(url);
+    headers['Content-Type'] = 'application/json';
 
     const body = {
       event: name,
@@ -2810,11 +3217,7 @@ function trackEvent(name, payload) {
     };
     fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true',
-        ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
-      },
+      headers,
       body: JSON.stringify(body),
       keepalive: true,  // позволяет запросу долететь даже если страницу закрыли
     }).catch(() => { /* тихо игнорируем — трекинг не критичен */ });
@@ -2839,6 +3242,23 @@ function parseMoney(str) {
 function formatMoney(n) {
   // "10 000 000" — полные цифры с пробелом-разделителем
   return Math.round(n).toLocaleString('ru-RU').replace(/,/g, ' ').replace(/ /g, ' ');
+}
+// Компактный формат для столбиков истории: "105к" / "1.2 млн"
+function compactMoney(n) {
+  n = Math.round(Math.abs(n));
+  if (n >= 1e6) { const m = n / 1e6; return (m >= 10 ? Math.round(m) : Math.round(m * 10) / 10) + (currentLang === 'uz' ? ' mln' : ' млн'); }
+  if (n >= 1e3) return Math.round(n / 1e3) + (currentLang === 'uz' ? 'k' : 'к');
+  return String(n);
+}
+// Короткие подписи последних N месяцев, заканчивая текущим
+function lastMonthLabelsShort(count) {
+  const uz = ['Yan','Fev','Mar','Apr','May','Iyn','Iyl','Avg','Sen','Okt','Noy','Dek'];
+  const ru = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  const arr = currentLang === 'uz' ? uz : ru;
+  const cur = new Date().getMonth();
+  const out = [];
+  for (let i = count - 1; i >= 0; i--) out.push(arr[((cur - i) % 12 + 12) % 12]);
+  return out;
 }
 function daysToQuarterEnd() {
   const now = new Date();

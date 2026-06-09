@@ -78,7 +78,39 @@ async def create_tables():
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at DESC);')
 
-        print("✅ База данных готова (включая таблицы опросов и событий).")
+        # --- АВТОРИЗАЦИЯ ПО ЛОГИНУ/ПАРОЛЮ (для мобильного приложения, вне Telegram) ---
+        # app_users: учётка с логином и паролем. Не пересекается с Telegram-входом.
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS app_users (
+                id SERIAL PRIMARY KEY,
+                login VARCHAR(64) UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                is_admin BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        ''')
+
+        # app_user_inns: какие аптеки (по ИНН) видит данный логин.
+        # Не трогает pharmacies.owner_tg_id — Telegram-владельцы остаются нетронутыми.
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS app_user_inns (
+                app_user_id INTEGER REFERENCES app_users(id) ON DELETE CASCADE,
+                inn VARCHAR(50) NOT NULL,
+                PRIMARY KEY (app_user_id, inn)
+            );
+        ''')
+
+        # sessions: токены сессий мобильного приложения.
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                app_user_id INTEGER REFERENCES app_users(id) ON DELETE CASCADE,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        ''')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(app_user_id);')
+
+        print("✅ База данных готова (включая таблицы опросов, событий и авторизации).")
     finally:
         await conn.close()
 
@@ -375,6 +407,105 @@ async def get_event_stats(days=7):
             'top_users': [{'tg_id': r['tg_id'], 'count': r['n']} for r in top_users],
             'per_day': [{'day': r['day'].isoformat(), 'count': r['n']} for r in per_day],
         }
+    finally:
+        await conn.close()
+
+
+# --- АВТОРИЗАЦИЯ ПО ЛОГИНУ/ПАРОЛЮ ---
+
+async def get_pharmacies_by_inns(inns):
+    """Возвращает аптеки по списку ИНН (для app-логина, который привязан к нескольким ИНН)."""
+    if not inns:
+        return []
+    conn = await get_connection()
+    try:
+        return await conn.fetch(
+            'SELECT * FROM pharmacies WHERE inn = ANY($1::varchar[]) ORDER BY id',
+            list(inns),
+        )
+    finally:
+        await conn.close()
+
+
+async def create_app_user(login, password_hash, inns, is_admin=False):
+    """Создаёт app_user с логином/паролем и привязывает к списку ИНН. Возвращает id."""
+    conn = await get_connection()
+    try:
+        async with conn.transaction():
+            row = await conn.fetchrow('''
+                INSERT INTO app_users (login, password_hash, is_admin)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (login) DO UPDATE
+                SET password_hash = EXCLUDED.password_hash,
+                    is_admin = EXCLUDED.is_admin
+                RETURNING id;
+            ''', login, password_hash, is_admin)
+            app_user_id = row['id']
+            # Перепривязываем ИНН заново (на случай повторного запуска).
+            await conn.execute('DELETE FROM app_user_inns WHERE app_user_id = $1', app_user_id)
+            for inn in inns:
+                await conn.execute('''
+                    INSERT INTO app_user_inns (app_user_id, inn)
+                    VALUES ($1, $2)
+                    ON CONFLICT DO NOTHING;
+                ''', app_user_id, str(inn))
+            return app_user_id
+    finally:
+        await conn.close()
+
+
+async def get_app_user_by_login(login):
+    """Возвращает строку app_users по логину (или None)."""
+    conn = await get_connection()
+    try:
+        return await conn.fetchrow('SELECT * FROM app_users WHERE login = $1', login)
+    finally:
+        await conn.close()
+
+
+async def get_app_user_inns(app_user_id):
+    """Список ИНН, привязанных к app_user."""
+    conn = await get_connection()
+    try:
+        rows = await conn.fetch(
+            'SELECT inn FROM app_user_inns WHERE app_user_id = $1', app_user_id
+        )
+        return [r['inn'] for r in rows]
+    finally:
+        await conn.close()
+
+
+async def create_session(token, app_user_id):
+    """Сохраняет токен сессии."""
+    conn = await get_connection()
+    try:
+        await conn.execute(
+            'INSERT INTO sessions (token, app_user_id) VALUES ($1, $2)',
+            token, app_user_id,
+        )
+    finally:
+        await conn.close()
+
+
+async def get_app_user_by_token(token):
+    """По токену сессии возвращает app_user (id, login, is_admin) или None."""
+    conn = await get_connection()
+    try:
+        return await conn.fetchrow('''
+            SELECT u.id, u.login, u.is_admin
+            FROM sessions s
+            JOIN app_users u ON u.id = s.app_user_id
+            WHERE s.token = $1
+        ''', token)
+    finally:
+        await conn.close()
+
+
+async def delete_session(token):
+    """Удаляет токен сессии (выход)."""
+    conn = await get_connection()
+    try:
+        await conn.execute('DELETE FROM sessions WHERE token = $1', token)
     finally:
         await conn.close()
 

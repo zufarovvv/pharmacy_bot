@@ -8,10 +8,15 @@
   1) Telegram WebApp initData (HMAC-SHA256 с BOT_TOKEN) — основной способ
   2) ?tg_id=... в query — дев-режим (отключается флагом ALLOW_QUERY_TG_ID=0)
 """
+from __future__ import annotations
+
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
+import secrets
 from pathlib import Path
 
 from aiohttp import web
@@ -21,6 +26,8 @@ from aiogram.utils.web_app import safe_parse_webapp_init_data
 from database import (
     get_user_data, get_pharmacies_by_tg_id, get_all_pharmacies_extended,
     log_event, get_event_stats,
+    get_pharmacies_by_inns, get_app_user_by_login, get_app_user_inns,
+    create_session, get_app_user_by_token, delete_session,
 )
 from dashboard_sync import get_knowledge_cache
 
@@ -67,26 +74,140 @@ async def resolve_tg_id(request: web.Request):
     return None, None
 
 
-async def handle_me(request: web.Request):
+# === Авторизация по логину/паролю (для мобильного приложения вне Telegram) ===
+
+PBKDF2_ROUNDS = 200_000
+
+
+def hash_password(password: str, salt: str | None = None) -> str:
+    """Хэширует пароль через PBKDF2-HMAC-SHA256. Формат: pbkdf2$<rounds>$<salt_hex>$<hash_hex>."""
+    if salt is None:
+        salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac('sha256', password.encode(), bytes.fromhex(salt), PBKDF2_ROUNDS)
+    return f'pbkdf2${PBKDF2_ROUNDS}${salt}${dk.hex()}'
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """Проверяет пароль против сохранённого хэша. Защищён от timing-атак."""
+    try:
+        algo, rounds, salt, hash_hex = stored.split('$')
+        if algo != 'pbkdf2':
+            return False
+        dk = hashlib.pbkdf2_hmac('sha256', password.encode(), bytes.fromhex(salt), int(rounds))
+        return hmac.compare_digest(dk.hex(), hash_hex)
+    except (ValueError, AttributeError):
+        return False
+
+
+def _extract_token(request: web.Request) -> str | None:
+    """Достаёт токен сессии из заголовка Authorization: Bearer <token> или X-App-Token."""
+    auth = request.headers.get('Authorization', '')
+    if auth.startswith('Bearer '):
+        return auth[7:].strip() or None
+    return request.headers.get('X-App-Token') or None
+
+
+async def resolve_principal(request: web.Request):
+    """
+    Единая точка авторизации. Возвращает dict-«принципала» либо tuple ошибки (error, status, extra).
+
+    Принципал:
+      {kind, is_admin, role, language, tg_id, app_user_id, inns, source, login}
+    Для Telegram-юзера inns=None (аптеки берём по tg_id), для app-юзера-админа inns=None (все аптеки),
+    для обычного app-юзера inns=<список ИНН>.
+    """
+    # 1) Telegram initData (приоритет — старый путь не меняется)
     tg_id, source = await resolve_tg_id(request)
-    if not tg_id:
-        return web.json_response({'error': 'unauthorized'}, status=401)
-
-    user = await get_user_data(tg_id)
-    if not user:
-        return web.json_response({
-            'error': 'not_registered',
+    if tg_id:
+        user = await get_user_data(tg_id)
+        if not user:
+            return ('not_registered', 404, {'tg_id': tg_id})
+        if user['role'] == 'ghost':
+            return ('access_denied', 403, {'tg_id': tg_id})
+        return {
+            'kind': 'tg',
             'tg_id': tg_id,
-        }, status=404)
+            'app_user_id': None,
+            'is_admin': user['role'] in ('admin', 'superadmin'),
+            'role': user['role'],
+            'language': user['language'],
+            'inns': None,
+            'source': source,
+            'login': None,
+        }
 
-    if user['role'] == 'ghost':
-        return web.json_response({'error': 'access_denied', 'tg_id': tg_id}, status=403)
+    # 2) Токен сессии мобильного приложения
+    token = _extract_token(request)
+    if token:
+        au = await get_app_user_by_token(token)
+        if au:
+            is_admin = bool(au['is_admin'])
+            inns = None if is_admin else await get_app_user_inns(au['id'])
+            return {
+                'kind': 'app',
+                'tg_id': None,
+                'app_user_id': au['id'],
+                'is_admin': is_admin,
+                'role': 'admin' if is_admin else 'user',
+                'language': 'ru',
+                'inns': inns,
+                'source': 'token',
+                'login': au['login'],
+            }
 
-    is_admin = user['role'] in ('admin', 'superadmin')
-    if is_admin:
-        pharmacies = await get_all_pharmacies_extended()
-    else:
-        pharmacies = await get_pharmacies_by_tg_id(tg_id)
+    return ('unauthorized', 401, {})
+
+
+async def pharmacies_for(principal):
+    """Возвращает список аптек, доступных принципалу."""
+    if principal['is_admin']:
+        return await get_all_pharmacies_extended()
+    if principal['kind'] == 'tg':
+        return await get_pharmacies_by_tg_id(principal['tg_id'])
+    return await get_pharmacies_by_inns(principal['inns'] or [])
+
+
+async def handle_login(request: web.Request):
+    """POST /api/auth/login {login, password} → {token, is_admin}. Вход вне Telegram."""
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'error': 'bad_json'}, status=400)
+
+    login = (body.get('login') or '').strip()
+    password = body.get('password') or ''
+    if not login or not password:
+        return web.json_response({'error': 'missing_credentials'}, status=400)
+
+    au = await get_app_user_by_login(login)
+    if not au or not verify_password(password, au['password_hash']):
+        return web.json_response({'error': 'invalid_credentials'}, status=401)
+
+    token = secrets.token_urlsafe(32)
+    await create_session(token, au['id'])
+    return web.json_response({
+        'token': token,
+        'login': au['login'],
+        'is_admin': bool(au['is_admin']),
+    })
+
+
+async def handle_logout(request: web.Request):
+    """POST /api/auth/logout → удаляет текущий токен сессии."""
+    token = _extract_token(request)
+    if token:
+        await delete_session(token)
+    return web.json_response({'ok': True})
+
+
+async def handle_me(request: web.Request):
+    principal = await resolve_principal(request)
+    if isinstance(principal, tuple):
+        error, status, extra = principal
+        return web.json_response({'error': error, **extra}, status=status)
+
+    is_admin = principal['is_admin']
+    pharmacies = await pharmacies_for(principal)
 
     def _parse_dashboard(value):
         # asyncpg может вернуть JSONB как dict, так и как str (зависит от типа кодека)
@@ -122,11 +243,12 @@ async def handle_me(request: web.Request):
         pharm_payload = pharm_dicts_full
 
     return web.json_response({
-        'tg_id': tg_id,
-        'auth_source': source,
-        'role': user['role'],
+        'tg_id': principal['tg_id'],
+        'login': principal['login'],
+        'auth_source': principal['source'],
+        'role': principal['role'],
         'is_admin': is_admin,
-        'language': user['language'],
+        'language': principal['language'],
         'pharmacies': pharm_payload,
         'managers': managers,
     })
@@ -233,22 +355,21 @@ async def handle_pharmacy_full(request: web.Request):
       - админ/суперадмин — любую аптеку
       - обычный юзер — только свою (по owner_tg_id)
     """
-    tg_id, _ = await resolve_tg_id(request)
-    if not tg_id:
-        return web.json_response({'error': 'unauthorized'}, status=401)
-
-    user = await get_user_data(tg_id)
-    if not user or user['role'] == 'ghost':
+    principal = await resolve_principal(request)
+    if isinstance(principal, tuple):
+        error, status, extra = principal
+        # Для совместимости: 404/403 трактуем как access_denied на этом эндпоинте
+        if status == 401:
+            return web.json_response({'error': 'unauthorized'}, status=401)
         return web.json_response({'error': 'access_denied'}, status=403)
 
     inn = request.match_info.get('inn', '').strip()
     if not inn:
         return web.json_response({'error': 'no_inn'}, status=400)
 
-    is_admin = user['role'] in ('admin', 'superadmin')
+    is_admin = principal['is_admin']
 
     # Берём всю аптеку с проверкой доступа
-    import asyncpg  # уже импортирован выше через database, но безопасно
     from database import get_connection
     conn = await get_connection()
     try:
@@ -259,9 +380,14 @@ async def handle_pharmacy_full(request: web.Request):
     if not row:
         return web.json_response({'error': 'not_found'}, status=404)
 
-    # Обычный юзер может смотреть только свою аптеку
-    if not is_admin and row['owner_tg_id'] != tg_id:
-        return web.json_response({'error': 'forbidden'}, status=403)
+    # Проверка доступа для не-админа: Telegram — по владельцу, app — по списку ИНН.
+    if not is_admin:
+        if principal['kind'] == 'tg':
+            allowed = row['owner_tg_id'] == principal['tg_id']
+        else:
+            allowed = inn in (principal['inns'] or [])
+        if not allowed:
+            return web.json_response({'error': 'forbidden'}, status=403)
 
     def _parse(value):
         if value is None: return {}
@@ -309,9 +435,10 @@ ALLOWED_EVENT_TYPES = {
 
 async def handle_events(request: web.Request):
     """Принимает событие с фронта и пишет в лог. Тихо игнорирует мусор."""
-    tg_id, _ = await resolve_tg_id(request)
-    if not tg_id:
+    principal = await resolve_principal(request)
+    if isinstance(principal, tuple):
         return web.json_response({'error': 'unauthorized'}, status=401)
+    tg_id = principal['tg_id']
 
     try:
         body = await request.json()
@@ -345,12 +472,11 @@ async def handle_ai_ask(request: web.Request):
     Body: {"question": "..."}
     Response: {"answer": "...", "model": "...", "config": false} — если ключ не задан
     """
-    tg_id, _ = await resolve_tg_id(request)
-    if not tg_id:
-        return web.json_response({'error': 'unauthorized'}, status=401)
-
-    user = await get_user_data(tg_id)
-    if not user or user['role'] == 'ghost':
+    principal = await resolve_principal(request)
+    if isinstance(principal, tuple):
+        error, status, _ = principal
+        if status == 401:
+            return web.json_response({'error': 'unauthorized'}, status=401)
         return web.json_response({'error': 'access_denied'}, status=403)
 
     if not ANTHROPIC_API_KEY:
@@ -370,9 +496,13 @@ async def handle_ai_ask(request: web.Request):
     if len(question) > 1000:
         return web.json_response({'error': 'too_long'}, status=400)
 
-    # Контекст аптеки (если есть)
+    # Контекст аптеки (если есть). Для AI берём только «свои» аптеки принципала,
+    # для админа — без тяжёлой загрузки всех (его собственные, если есть).
     pharmacy_context = ''
-    pharmacies = await get_pharmacies_by_tg_id(tg_id)
+    if principal['kind'] == 'tg':
+        pharmacies = await get_pharmacies_by_tg_id(principal['tg_id'])
+    else:
+        pharmacies = await get_pharmacies_by_inns(principal['inns'] or [])
     if pharmacies:
         p = pharmacies[0]
         d_raw = p.get('dashboard_data') if isinstance(p, dict) else p['dashboard_data']
@@ -406,7 +536,7 @@ async def handle_ai_ask(request: web.Request):
     else:
         kb_text = "(база знаний пуста — отвечай только из своих общих знаний и контекста аптеки)"
 
-    lang = user['language'] or 'ru'
+    lang = principal['language'] or 'ru'
     response_lang_instruction = 'Отвечай на русском' if lang == 'ru' else "O'zbek tilida javob ber"
 
     system_prompt = (
@@ -449,7 +579,7 @@ async def handle_ai_ask(request: web.Request):
     # Лог события (для аналитики)
     try:
         inn = pharmacies[0]['inn'] if pharmacies else None
-        await log_event(tg_id, 'ai_ask', pharmacy_inn=inn,
+        await log_event(principal['tg_id'], 'ai_ask', pharmacy_inn=inn,
                         payload={'q_len': len(question), 'a_len': len(answer)})
     except Exception:
         pass
@@ -462,12 +592,12 @@ async def handle_ai_ask(request: web.Request):
 
 async def handle_admin_stats(request: web.Request):
     """Сводка по событиям. Только для admin/superadmin."""
-    tg_id, _ = await resolve_tg_id(request)
-    if not tg_id:
-        return web.json_response({'error': 'unauthorized'}, status=401)
-
-    user = await get_user_data(tg_id)
-    if not user or user['role'] not in ('admin', 'superadmin'):
+    principal = await resolve_principal(request)
+    if isinstance(principal, tuple):
+        if principal[1] == 401:
+            return web.json_response({'error': 'unauthorized'}, status=401)
+        return web.json_response({'error': 'forbidden'}, status=403)
+    if not principal['is_admin']:
         return web.json_response({'error': 'forbidden'}, status=403)
 
     days = 7
@@ -517,6 +647,8 @@ def create_app() -> web.Application:
     app = web.Application(middlewares=[no_cache_middleware])
 
     # API эндпоинты
+    app.router.add_post('/api/auth/login', handle_login)
+    app.router.add_post('/api/auth/logout', handle_logout)
     app.router.add_get('/api/me', handle_me)
     app.router.add_get('/api/health', handle_health)
     app.router.add_get('/api/pharmacy/{inn}', handle_pharmacy_full)
