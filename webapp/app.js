@@ -2968,19 +2968,25 @@ function renderProductsOverlay(projectName, products, summary) {
     const actionBtn = `<button class="prod-action ${p.status}" onclick="productCtaClick('${projectSafe}')">${actionLabel}</button>`;
 
     return `
-      <div class="prod-card ${p.status}">
-        <div class="prod-head">
-          <div class="prod-avatar" style="background: ${brandClr};">${brandLetterStr}</div>
-          <div class="prod-title-block">
-            <div class="prod-name">${escapeHtml(p.name)} <span class="prod-dosage">${escapeHtml(p.dosage)}</span></div>
-            <div class="prod-meta">${escapeHtml(projectName)} · ${escapeHtml(p.form)}</div>
+      <div class="prod-item ${p.status}">
+        <button class="prod-row" onclick="toggleProdRow(this)" aria-expanded="false">
+          <div class="prod-avatar-sm" style="background: ${brandClr};">${brandLetterStr}</div>
+          <div class="prod-row-main">
+            <div class="prod-row-name">${escapeHtml(p.name)} <span class="prod-dosage">${escapeHtml(p.dosage)}</span></div>
+            <div class="prod-row-sub">${escapeHtml(projectName)} · ${escapeHtml(p.form)}</div>
           </div>
-          ${statusBadge}
+          <div class="prod-row-right">
+            ${statusBadge}
+            <div class="prod-row-margin">+${margin}%</div>
+          </div>
+          <span class="prod-row-chevron">›</span>
+        </button>
+        <div class="prod-detail" style="display:none;">
+          ${pricingHtml}
+          ${opportunityBlock}
+          ${peerHtml}
+          ${actionBtn}
         </div>
-        ${pricingHtml}
-        ${opportunityBlock}
-        ${peerHtml}
-        ${actionBtn}
       </div>
     `;
   }).join('');
@@ -3031,6 +3037,16 @@ window.closeProducts = function() {
   if (overlay) overlay.classList.remove('active');
   currentProductsProject = null;
   updateBackButton();
+};
+
+// Раскрытие/сворачивание подробностей товара в списке (тап по строке).
+window.toggleProdRow = function(btn) {
+  const item = btn.closest('.prod-item');
+  if (!item) return;
+  const detail = item.querySelector('.prod-detail');
+  const open = item.classList.toggle('open');
+  if (detail) detail.style.display = open ? 'block' : 'none';
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
 };
 
 window.productCtaClick = function(projectName) {

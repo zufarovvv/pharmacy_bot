@@ -1,0 +1,192 @@
+============================================================
+DATFO — ПОЛНЫЙ ФУНКЦИОНАЛ, ФАЙЛЫ И API
+(сценарий: в системе НЕТ данных — что нужно, чтобы всё заработало с нуля)
+============================================================
+
+Один backend обслуживает И Telegram Mini App, И мобильное приложение (APK).
+Главный ключ связи всего — ИНН аптеки (inn).
+
+ЛЕГЕНДА:
+  [ЕСТЬ]  — уже реализовано / приходит из Google Sheets
+  [НУЖНО] — отсутствует или фейковое, надо подключить реальные данные/код
+
+
+============================================================
+0. АРХИТЕКТУРА
+============================================================
+- bot.py              Telegram-бот (aiogram), кнопка Web App, рассылки, опросы.
+- api.py              HTTP API (aiohttp) + раздача webapp/. Стартует из bot.py.
+- database.py         Доступ к PostgreSQL, схема таблиц.
+- dashboard_sync.py   Синк показателей аптек из Google Sheets -> dashboard_data.
+- seed_clients.py     Синк связки ИНН <-> telegram_id из мастер-листа.
+- create_app_user.py  Создание логин/пароль пользователей (вход вне Telegram).
+- webapp/             Фронтенд (index.html, app.js, config.js, assets/).
+- mobile/             Capacitor-проект (оборачивает webapp/ в Android APK).
+
+Поток: DWH/Sheets -> синк-скрипты -> PostgreSQL -> api.py -> webapp (Telegram/APK).
+
+
+============================================================
+1. ТАБЛИЦЫ БАЗЫ ДАННЫХ (PostgreSQL)
+============================================================
+[ЕСТЬ] users(telegram_id PK, role, language)
+        role: ghost | user | admin | superadmin
+[ЕСТЬ] pharmacies(id, inn UNIQUE, owner_tg_id, business_name, pharmacy_name,
+                  dashboard_data JSONB)
+[ЕСТЬ] app_users(id, login UNIQUE, password_hash, is_admin, created_at)
+[ЕСТЬ] app_user_inns(app_user_id, inn)        -- какие ИНН видит логин
+[ЕСТЬ] sessions(token PK, app_user_id, created_at)
+[ЕСТЬ] events(id, tg_id, pharmacy_inn, event_type, payload, created_at)
+[ЕСТЬ] polls(id, title, created_at)
+[ЕСТЬ] poll_answers(poll_id, user_id, answer, answered_at)
+
+[НУЖНО] products(product_id PK, project_name, name, dosage, form,
+                 price, retail, bonus_pct)              -- справочник товаров проекта
+[НУЖНО] pharmacy_products(inn, product_id, status, monthly_orders, potential)
+                 -- закупка товара конкретной аптекой (status: active|occasional|missed)
+
+
+============================================================
+2. ИСТОЧНИКИ ДАННЫХ (что заполнить, если система пустая)
+============================================================
+
+2.1 АПТЕКИ                                            [ЕСТЬ, проверить полноту]
+    inn, business_name, pharmacy_name, region, district, city, category, legal_name
+
+2.2 ДОСТУП / ПОЛЬЗОВАТЕЛИ                              [НУЖНО]
+    - telegram_id -> inn (кто владелец какой аптеки)
+    - кто admin/superadmin
+    - (для входа вне Telegram логины заводим мы; нужен список ИНН на пользователя)
+
+2.3 МЕНЕДЖЕРЫ (по аптеке)                              [ЕСТЬ, часто пусто]
+    manager (ФИО), manager_phone, manager_username (Telegram @ без @)
+
+2.4 КВАРТАЛЬНЫЕ ИТОГИ (по аптеке)                      [ЕСТЬ]
+    quarter_plan, quarter_fact, quarter_percent, total_bonus, remaining, income_quarter
+
+2.5 ПОМЕСЯЧНЫЕ ПОКАЗАТЕЛИ (3 месяца квартала)          [ЕСТЬ]
+    по каждому месяцу: plan, fact, percent
+
+2.6 ПРОЕКТЫ АПТЕКИ (КРКА/BAYER/SAFE...)                [ЕСТЬ]
+    name, quarter_plan, fact, percent, status, bonus_amount, bonus_percent,
+    condition, remaining, months{plan/fact/percent}
+
+2.7 БОНУСЫ (агрегаты)                                  [ЕСТЬ]
+    accrued{amount,desc}, completed{amount,desc}, potential{amount,desc}
+
+2.8 СЧЁТЧИКИ СТАТУСОВ                                   [ЕСТЬ]
+    stats.completed, stats.partial, stats.critical
+
+2.9 ТОВАРЫ СПРАВОЧНИК (по проекту)                     [НУЖНО — сейчас фейк]
+    product_id, project_name, name, dosage, form, price(закуп), retail(розница), bonus_pct
+
+2.10 ЗАКУПКА ТОВАРА АПТЕКОЙ (аптека x товар)          [НУЖНО — сейчас фейк]
+    inn, product_id, status(active|occasional|missed), monthly_orders, potential(опц.)
+
+2.11 (опц.) КОНКУРЕНТНАЯ СПРАВКА для допродаж          [НУЖНО опц.]
+    peers_total, peers_buying, competitor, competitor_brand, competitor_reason
+
+2.12 (опц.) БАЗА ЗНАНИЙ (FAQ/AI)                       [ЕСТЬ из Sheets]
+    category, question, answer
+
+
+============================================================
+3. API ЭНДПОИНТЫ (контракт)
+============================================================
+Авторизация во ВСЕХ защищённых ручках — одним из:
+  - Telegram: заголовок X-Telegram-Init-Data (или ?init_data=) — проверка подписи
+  - Приложение: заголовок Authorization: Bearer <token> (получен на /api/auth/login)
+  - Dev: ?tg_id=<id> (только при ALLOW_QUERY_TG_ID=1)
+
+[ЕСТЬ] POST /api/auth/login
+        in:  {login, password}
+        out: {token, login, is_admin}
+        данные: app_users, app_user_inns
+
+[ЕСТЬ] POST /api/auth/logout
+        in:  заголовок с токеном
+        out: {ok:true}
+
+[ЕСТЬ] GET /api/me
+        Профиль + список доступных аптек (для админа — все, slim).
+        out: {tg_id, login, role, is_admin, language, pharmacies[], managers[]}
+        данные: users/app_users, pharmacies(+dashboard_data)
+
+[ЕСТЬ] GET /api/pharmacy/{inn}
+        Полные данные одной аптеки (дашборд) с проверкой доступа.
+        out: {id, inn, name, business, dashboard{...}}
+        данные: pharmacies.dashboard_data
+
+[ЕСТЬ] GET /api/health
+        Проверка живости. out: {ok:true}
+
+[ЕСТЬ] POST /api/events
+        Трекинг кликов/действий (аналитика).
+        in:  {event, pharmacy_inn, payload}
+        данные: events
+
+[ЕСТЬ] POST /api/ai/ask
+        AI-ассистент по данным аптеки + базе знаний.
+        in:  {question}
+        out: {answer, model}
+        данные: dashboard_data + база знаний; ключ ANTHROPIC_API_KEY
+
+[ЕСТЬ] GET /api/admin/stats?days=N
+        Сводка активности (только admin). данные: events
+
+[ЕСТЬ] GET /            раздача webapp/index.html + статика (config.js, app.js, assets)
+
+[НУЖНО] GET /api/products?inn=<inn>&project=<name>
+        Реальные товары проекта для аптеки (заменяет фейковый генератор во фронте).
+        out: [{product_id, name, dosage, form, price, retail, bonus_pct,
+               status, monthly_orders, potential, peer{...}}]
+        данные: products + pharmacy_products
+        АЛЬТЕРНАТИВА: вкладывать products прямо в dashboard_data.projects[].products[]
+                      и отдавать через /api/pharmacy/{inn} (без нового эндпоинта).
+
+
+============================================================
+4. СИНК-СКРИПТЫ / КОД (что есть и что дописать)
+============================================================
+[ЕСТЬ] dashboard_sync.py   Sheets «Свод таб new» -> pharmacies.dashboard_data
+[ЕСТЬ] seed_clients.py     мастер-лист -> users + pharmacies (ИНН<->tg_id)
+[ЕСТЬ] create_app_user.py  завести логин/пароль + привязать ИНН
+[ЕСТЬ] database.py         create_tables() — создаёт все таблицы
+
+[НУЖНО] products_sync.py   источник товаров (DWH/Excel/Sheets) -> products + pharmacy_products
+[НУЖНО] миграция БД        CREATE TABLE products, pharmacy_products
+[НУЖНО] правка api.py      эндпоинт /api/products (или вложить в /api/pharmacy)
+[НУЖНО] правка webapp/app.js  вместо FAKE_PRODUCTS/getProductStatus/getPeerInfo
+                              брать данные из API
+
+
+============================================================
+5. КОНФИГ / СЕКРЕТЫ (.env)
+============================================================
+BOT_TOKEN                 токен Telegram-бота
+DB_USER/DB_PASS/DB_NAME/DB_HOST   PostgreSQL
+WEB_APP_URL               публичный HTTPS-адрес Mini App (бот вставляет в кнопку)
+API_PORT                  порт API (8080)
+ALLOW_QUERY_TG_ID         1 только в dev (вход по ?tg_id=)
+ANTHROPIC_API_KEY/MODEL   для AI-ассистента
+SHEET_ID, *_SHEET_GID     Google Sheets для синка
+GOOGLE_CREDS_FILE         creds.json (сервисный аккаунт Google)
+
+
+============================================================
+6. ПРИОРИТЕТ ДЛЯ ЗАПУСКА «С НУЛЯ»
+============================================================
+1) PostgreSQL + database.py create_tables()           -> пустые таблицы
+2) Аптеки + связка telegram_id<->ИНН (seed_clients)    -> кто что видит
+3) Показатели аптек (dashboard_sync)                   -> дашборд оживает
+4) Менеджеры заполнены                                 -> кнопки «связаться»
+5) ТОВАРЫ: products + pharmacy_products + products_sync -> экран продукции на реальных данных
+6) WEB_APP_URL (постоянный домен) + бот запущен        -> Mini App в Telegram
+7) (опц.) ANTHROPIC_API_KEY                            -> AI-ассистент
+8) (опц.) база знаний                                  -> FAQ/AI ответы
+
+КРИТИЧНО, что сейчас фейковое/пустое:
+  - товары проекта (раздел 2.9 / 2.10) — генерируются случайно во фронте;
+  - связка telegram_id -> ИНН и роли;
+  - менеджеры по аптекам.
+Остальное (аптеки, квартал, проекты, бонусы, месяцы) уже работает из Google Sheets.

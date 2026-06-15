@@ -1537,6 +1537,53 @@ body.tour-active .faq-fab {
 .prod-card.occasional { border-top: 3px solid var(--warning); }
 .prod-card.missed     { border-top: 3px solid var(--danger); }
 
+/* ===== Списочный вид товаров (компактные строки + раскрытие по тапу) ===== */
+.prod-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--border);
+  overflow: hidden;
+}
+.prod-item.active  { border-left-color: var(--success); }
+.prod-item.occasional { border-left-color: var(--warning); }
+.prod-item.missed  { border-left-color: var(--danger); }
+.prod-row {
+  width: 100%;
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 12px;
+  background: none; border: none; cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+.prod-row:active { background: var(--bg-secondary); }
+.prod-avatar-sm {
+  width: 34px; height: 34px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; color: #fff;
+  font-weight: 900; font-size: 12px; letter-spacing: -0.5px;
+}
+.prod-row-main { flex: 1; min-width: 0; }
+.prod-row-name {
+  font-size: 14px; font-weight: 800; color: var(--text-primary);
+  line-height: 1.2; letter-spacing: -0.2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.prod-row-sub {
+  font-size: 10px; color: var(--text-muted); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.prod-row-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+.prod-row-margin { font-size: 13px; font-weight: 900; color: var(--success-dark); }
+.prod-row-chevron {
+  flex-shrink: 0; font-size: 20px; color: var(--text-muted);
+  transition: transform 0.2s; line-height: 1;
+}
+.prod-item.open .prod-row-chevron { transform: rotate(90deg); }
+.prod-detail { padding: 0 12px 14px; border-top: 1px solid var(--border); }
+.prod-detail .prod-pricing { margin-top: 12px; }
+
 .prod-head { display: flex; gap: 12px; align-items: flex-start; }
 .prod-avatar {
   width: 44px; height: 44px;
@@ -2144,6 +2191,38 @@ html.income-open,body.income-open{overflow:hidden!important;height:100%;}
   <section class="biz-hero" id="bizHero">
     <!-- адаптивный hero — рендерится из JS под статус аптеки -->
   </section>
+
+  <!-- ===== ПРОЕКТЫ (перемещены сюда: после блока "А могли ещё", над "Уже заработали") ===== -->
+  <section>
+    <div class="section-title" data-i18n="projectsTitle">Проекты</div>
+    <div class="card" style="padding: 12px; margin-top: 8px;">
+      <div class="projects-filters">
+        <input type="text" id="projSearch" class="search-input" data-i18n-placeholder="searchPlaceholder" placeholder="🔍 Найти проект">
+        <select id="projFilter" class="status-select">
+          <option value="all" data-i18n="filterAll">Все</option>
+          <option value="completed" data-i18n="filterCompleted">✅ Победы</option>
+          <option value="partial" data-i18n="filterPartial">⚠️ Ускорить</option>
+          <option value="critical" data-i18n="filterCritical">🔴 Срочно</option>
+        </select>
+      </div>
+    </div>
+    <div class="projects-table" style="margin-top: 8px;">
+      <div class="projects-table-head">
+        <div data-i18n="th_project">Проект</div>
+        <div style="text-align:right;" data-i18n="th_plan">План</div>
+        <div style="text-align:right;" data-i18n="th_fact">Факт</div>
+        <div style="text-align:right;">%</div>
+        <div style="text-align:right;" data-i18n="th_bonus">Бонус</div>
+      </div>
+      <div id="projList">
+        <div class="empty-state">
+          <div class="empty-state-icon">⏳</div>
+          <div data-i18n="loadingProjects">Загрузка проектов...</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="biz-secondary" id="bizSecondary">
     <!-- 2 карточки с второстепенными метриками -->
   </section>
@@ -2208,36 +2287,6 @@ html.income-open,body.income-open{overflow:hidden!important;height:100%;}
   <section>
     <div class="section-title" data-i18n="bonusTitle">Бонусы</div>
     <div class="bonus-grid" id="bonusGrid"></div>
-  </section>
-
-  <section>
-    <div class="section-title" data-i18n="projectsTitle">Проекты</div>
-    <div class="card" style="padding: 12px; margin-top: 8px;">
-      <div class="projects-filters">
-        <input type="text" id="projSearch" class="search-input" data-i18n-placeholder="searchPlaceholder" placeholder="🔍 Найти проект">
-        <select id="projFilter" class="status-select">
-          <option value="all" data-i18n="filterAll">Все</option>
-          <option value="completed" data-i18n="filterCompleted">✅ Победы</option>
-          <option value="partial" data-i18n="filterPartial">⚠️ Ускорить</option>
-          <option value="critical" data-i18n="filterCritical">🔴 Срочно</option>
-        </select>
-      </div>
-    </div>
-    <div class="projects-table" style="margin-top: 8px;">
-      <div class="projects-table-head">
-        <div data-i18n="th_project">Проект</div>
-        <div style="text-align:right;" data-i18n="th_plan">План</div>
-        <div style="text-align:right;" data-i18n="th_fact">Факт</div>
-        <div style="text-align:right;">%</div>
-        <div style="text-align:right;" data-i18n="th_bonus">Бонус</div>
-      </div>
-      <div id="projList">
-        <div class="empty-state">
-          <div class="empty-state-icon">⏳</div>
-          <div data-i18n="loadingProjects">Загрузка проектов...</div>
-        </div>
-      </div>
-    </div>
   </section>
 
   <section class="cta-manager">
