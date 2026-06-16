@@ -33,7 +33,7 @@ def fmt(n):
 def build_dashboard(inn, plan_rec, catalog):
     cat_projects = catalog['projects']
     projects_out = []
-    q_plan = q_fact = 0.0
+    q_plan = q_fact = q_bonus = 0.0
     completed = partial = critical = 0
 
     for plan_name, prec in plan_rec['projects'].items():
@@ -45,6 +45,10 @@ def build_dashboard(inn, plan_rec, catalog):
         cinfo = cat_projects.get(cat_name) if cat_name else None
         condition = cinfo['condition'] if cinfo else ''
         manager = cinfo['manager'] if cinfo else ''
+        # Бонус проекта = факт × ставка бонуса аптеки (из Проекты.xlsx, по условию).
+        bonus_rate = 0.0
+        if cinfo:
+            bonus_rate = cinfo['bonus_rate_prodaja'] if condition == 'Продажа' else cinfo['bonus_rate_zakup']
 
         # Реальные товары проекта из каталога (Проекты.xlsx): название, закуп(CIP), бонус.
         by_fom = catalog['by_fom_id']
@@ -71,18 +75,20 @@ def build_dashboard(inn, plan_rec, catalog):
                                 'percent': round(mf / mp * 100) if mp else 0, 'label': mlabel}
 
         pct = round(fact_q / plan_q * 100) if plan_q else 0
+        bonus_q = fact_q * bonus_rate
         status = 'completed' if pct >= 100 else ('partial' if pct >= 50 else 'critical')
         completed += pct >= 100
         partial += 50 <= pct < 100
         critical += pct < 50
         q_plan += plan_q
         q_fact += fact_q
+        q_bonus += bonus_q
 
         projects_out.append({
             'name': cat_name or plan_name, 'status': status, 'percent': pct,
             'plan': fmt(plan_q), 'quarter_plan': fmt(plan_q), 'quarter_plan_raw': plan_q,
             'fact': fmt(fact_q), 'condition': condition, 'manager': manager,
-            'bonus_amount': '0', 'bonus_amount_raw': 0,
+            'bonus_amount': fmt(bonus_q), 'bonus_amount_raw': bonus_q,
             'remaining': fmt(max(0, plan_q - fact_q)), 'months': months_out,
             'products': products, 'product_count': len(products),
         })
@@ -98,10 +104,10 @@ def build_dashboard(inn, plan_rec, catalog):
         'stats': {'completed': int(completed), 'partial': int(partial), 'critical': int(critical)},
         'months': _quarter_months(projects_out),
         'totals': {'quarter_plan': fmt(q_plan), 'quarter_plan_raw': q_plan,
-                   'quarter_percent': q_pct, 'total_bonus': '0', 'total_bonus_raw': 0,
+                   'quarter_percent': q_pct, 'total_bonus': fmt(q_bonus), 'total_bonus_raw': q_bonus,
                    'remaining': fmt(max(0, q_plan - q_fact))},
-        'bonuses': {'accrued': {'amount': '0', 'desc': ''},
-                    'completed': {'amount': '0', 'desc': ''},
+        'bonuses': {'accrued': {'amount': fmt(q_bonus), 'desc': 'бонус по факту закупа'},
+                    'completed': {'amount': fmt(q_bonus), 'desc': ''},
                     'potential': {'amount': '0', 'desc': ''}},
         'projects': projects_out, 'income_quarter': fmt(q_fact),
         '_source': 'plans_IIQ',

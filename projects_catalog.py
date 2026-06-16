@@ -89,7 +89,8 @@ def load_projects_catalog(path=DEFAULT_PATH):
 
     # Агрегаты по проектам
     proj = defaultdict(lambda: {'manager': '', 'fom_ids': set(),
-                                'n_zakup': 0, 'n_prodaja': 0, 'n_products': 0})
+                                'n_zakup': 0, 'n_prodaja': 0, 'n_products': 0,
+                                'rate_zakup': [], 'rate_prodaja': []})
     for p in products:
         pr = proj[p['project']]
         pr['fom_ids'].add(p['fom_id'])
@@ -98,8 +99,15 @@ def load_projects_catalog(path=DEFAULT_PATH):
             pr['manager'] = p['manager']
         if p['bonus_apt_zakup'] > 0:
             pr['n_zakup'] += 1
+            if p['cip'] > 0:
+                pr['rate_zakup'].append(p['bonus_apt_zakup'] / p['cip'])
         if p['bonus_apt_prodaja'] > 0:
             pr['n_prodaja'] += 1
+            if p['cip'] > 0:
+                pr['rate_prodaja'].append(p['bonus_apt_prodaja'] / p['cip'])
+
+    def _avg(xs):
+        return sum(xs) / len(xs) if xs else 0.0
 
     projects = {}
     for name, pr in proj.items():
@@ -115,6 +123,10 @@ def load_projects_catalog(path=DEFAULT_PATH):
             'condition': condition,
             'fom_ids': pr['fom_ids'],
             'n_products': pr['n_products'],
+            # Ставка бонуса аптеки = средняя доля бонуса от CIP по товарам проекта.
+            # Бонус проекта ≈ факт × ставка (для проектов с единой ставкой — точно).
+            'bonus_rate_zakup': _avg(pr['rate_zakup']),
+            'bonus_rate_prodaja': _avg(pr['rate_prodaja']),
         }
 
     return {'products': products, 'by_fom_id': by_fom_id, 'projects': projects}
