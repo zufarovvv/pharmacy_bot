@@ -46,6 +46,23 @@ def build_dashboard(inn, plan_rec, catalog):
         condition = cinfo['condition'] if cinfo else ''
         manager = cinfo['manager'] if cinfo else ''
 
+        # Реальные товары проекта из каталога (Проекты.xlsx): название, закуп(CIP), бонус.
+        by_fom = catalog['by_fom_id']
+        products = []
+        if cinfo:
+            for fid in sorted(cinfo['fom_ids']):
+                pr = by_fom.get(fid)
+                if not pr:
+                    continue
+                products.append({
+                    'fom_id': fid,
+                    'name': pr['name'],
+                    'cip': pr['cip'],
+                    'cip_fmt': fmt(pr['cip']),
+                    'bonus_zakup': pr['bonus_apt_zakup'],
+                    'bonus_prodaja': pr['bonus_apt_prodaja'],
+                })
+
         months_out = {}
         for pk, fk, mkey, mlabel in MONTHS:
             mp = prec.get(pk, 0) or 0
@@ -67,6 +84,7 @@ def build_dashboard(inn, plan_rec, catalog):
             'fact': fmt(fact_q), 'condition': condition, 'manager': manager,
             'bonus_amount': '0', 'bonus_amount_raw': 0,
             'remaining': fmt(max(0, plan_q - fact_q)), 'months': months_out,
+            'products': products, 'product_count': len(products),
         })
 
     projects_out.sort(key=lambda p: p['quarter_plan_raw'], reverse=True)

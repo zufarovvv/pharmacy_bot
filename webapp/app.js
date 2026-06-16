@@ -2887,26 +2887,54 @@ window.showProjectProducts = function(projectName) {
   trackEvent('project_click', { project: projectName });
   currentProductsProject = projectName;
 
-  // ИНН — для стабильности демо: одна и та же аптека всегда увидит ту же раскладку.
-  const inn = (currentPharm && currentPharm.inn) || (window.userData && window.userData.tg_id) || 'demo';
-  const products = getFakeProducts(projectName);
+  // РЕАЛЬНЫЕ товары проекта из данных аптеки (Проекты.xlsx -> dashboard.projects[].products).
+  const dash = (currentPharm && currentPharm.dashboard) || {};
+  const projs = Array.isArray(dash.projects) ? dash.projects : [];
+  const proj = projs.find(p => (p.name || '') === projectName) || {};
+  const products = Array.isArray(proj.products) ? proj.products : [];
 
-  // Раскладываем по статусам, считаем потенциал по "missed"
-  const enriched = products.map(p => {
-    const status = getProductStatus(String(inn), p.id);
-    const monthlyOrders = getMonthlyOrders(String(inn), p.id, p.monthly_orders_avg);
-    const potential = getQuarterlyPotential(p, monthlyOrders);
-    const peer = getPeerInfo(String(inn), p.id, status, monthlyOrders);
-    return { ...p, status, monthlyOrders, potential, peer };
-  });
+  const overlay = document.getElementById('productsOverlay');
+  if (!overlay) return;
 
-  const totalMissed = enriched.filter(x => x.status === 'missed');
-  const lostBonus = totalMissed.reduce((s, x) => s + x.potential, 0);
-  const activeCount = enriched.filter(x => x.status === 'active').length;
-  const tryingCount = enriched.filter(x => x.status === 'occasional').length;
-  const missedCount = totalMissed.length;
+  const money = currentLang === 'uz' ? "so'm" : 'сум';
+  const L = currentLang === 'uz'
+    ? { sub: 'Loyihadagi mahsulotlar', zakup: 'xarid', bonus: 'bonus',
+        cta: "Menejer bilan bog'lanish", empty: "Mahsulotlar ro'yxati tez orada qo'shiladi" }
+    : { sub: 'Товаров в проекте', zakup: 'закуп', bonus: 'бонус',
+        cta: 'Связаться с менеджером', empty: 'Список товаров скоро появится' };
+  const clr = brandColor(projectName);
+  const letter = brandLetter(projectName);
 
-  renderProductsOverlay(projectName, enriched, { lostBonus, activeCount, tryingCount, missedCount });
+  const itemsHtml = products.length ? products.map(p => {
+    const cip = p.cip_fmt || (p.cip != null ? formatMoney(p.cip) : '—');
+    const bonus = (p.bonus_zakup && p.bonus_zakup > 0) ? ` · ${L.bonus} ${formatMoney(p.bonus_zakup)}` : '';
+    return `
+      <div class="prod-item">
+        <div class="prod-row" style="cursor:default;">
+          <div class="prod-avatar-sm" style="background:${clr};">${letter}</div>
+          <div class="prod-row-main">
+            <div class="prod-row-name">${escapeHtml(p.name)}</div>
+            <div class="prod-row-sub">${L.zakup} ${cip} ${money}${bonus}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('') : `<div class="empty-state" style="padding:24px;"><div class="empty-state-icon">📦</div><div>${L.empty}</div></div>`;
+
+  const safe = escapeHtml(projectName).replace(/'/g, "\\'");
+  overlay.innerHTML = `
+    <div class="prod-sheet">
+      <div class="sheet-close-anchor"><button class="prod-close" onclick="closeProducts()">×</button></div>
+      <div class="prod-sheet-head" data-fix-backbutton>
+        <div class="prod-project-name">${escapeHtml(projectName)}</div>
+        <div class="prod-project-sub">${L.sub}: ${products.length}</div>
+      </div>
+      <div class="prod-list">${itemsHtml}</div>
+      <div class="prod-footer-cta">
+        <button class="prod-final-cta" onclick="productCtaClick('${safe}')">${L.cta}</button>
+      </div>
+    </div>`;
+  overlay.classList.add('active');
+  updateBackButton();
 };
 
 function renderProductsOverlay(projectName, products, summary) {
