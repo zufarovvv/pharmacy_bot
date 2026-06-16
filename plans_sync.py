@@ -146,6 +146,43 @@ async def save(dashboard, view_tg_id):
         await conn.close()
 
 
+async def save_many(dashboards):
+    """Массовый upsert дашбордов в pharmacies (по ИНН). owner_tg_id не трогаем."""
+    conn = await asyncpg.connect(user=os.getenv('DB_USER'), password=os.getenv('DB_PASS'),
+                                 database=os.getenv('DB_NAME'), host=os.getenv('DB_HOST'))
+    try:
+        rows = [(d['inn'], d['legal_name'], d['name'],
+                 json.dumps(d, ensure_ascii=False)) for d in dashboards]
+        await conn.executemany('''
+            INSERT INTO pharmacies (inn, business_name, pharmacy_name, dashboard_data)
+            VALUES ($1,$2,$3,$4::jsonb)
+            ON CONFLICT (inn) DO UPDATE
+            SET business_name=EXCLUDED.business_name,
+                pharmacy_name=EXCLUDED.pharmacy_name,
+                dashboard_data=EXCLUDED.dashboard_data;
+        ''', rows)
+    finally:
+        await conn.close()
+
+
+def sync_all():
+    """Прогон ВСЕХ аптек из планов: строит дашборд из Excel и пишет в pharmacies."""
+    catalog = load_projects_catalog()
+    plans = load_plans()['pharmacies']
+    dashboards = []
+    skipped = 0
+    for inn, rec in plans.items():
+        d = build_dashboard(inn, rec, catalog)
+        if not d['projects']:          # нет проектов с планом/фактом — пропускаем
+            skipped += 1
+            continue
+        dashboards.append(d)
+    print(f"Построено дашбордов: {len(dashboards)} | пропущено (без проектов): {skipped}")
+    asyncio.run(save_many(dashboards))
+    with_fact = sum(1 for d in dashboards if d['totals']['quarter_percent'] > 0)
+    print(f"✅ Записано в pharmacies: {len(dashboards)} аптек (из них с фактом: {with_fact})")
+
+
 def sync_one(inn, view_tg_id=None):
     catalog = load_projects_catalog()
     plans = load_plans()['pharmacies']
@@ -168,5 +205,8 @@ def sync_one(inn, view_tg_id=None):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print('Использование: uv run python plans_sync.py <inn> [view_tg_id]'); sys.exit(1)
-    sync_one(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else None)
+        print('Использование: uv run python plans_sync.py <inn> [view_tg_id]  |  --all'); sys.exit(1)
+    if sys.argv[1] == '--all':
+        sync_all()
+    else:
+        sync_one(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else None)
