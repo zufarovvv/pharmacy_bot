@@ -29,8 +29,14 @@ SHEET = 'II-Q'
 LABEL_MAP = {
     'ПЛАНIIQ2026': 'plan_iiq',
     'ПЛАНАПРЕЛЬ': 'plan_apr',
+    'ФАКТАПРЕЛЬ': 'fact_apr',
     'ПЛАНМАЙ': 'plan_may',
+    'ФАКТМАЙ': 'fact_may',
     'ПЛАНИЮНЬ': 'plan_jun',
+    'ФАКТИЮНЬ': 'fact_jun',
+    'ВПIIQ(сум)': 'fact_iiq',   # выполнение плана за квартал в сумме = факт квартала
+    'ВПIIQ(%)': 'vp_pct',
+    'ДОПЛАНА': 'do_plana',
     'условия': 'condition',
 }
 
