@@ -88,7 +88,8 @@ def build_dashboard(inn, plan_rec, catalog):
             'name': cat_name or plan_name, 'status': status, 'percent': pct,
             'plan': fmt(plan_q), 'quarter_plan': fmt(plan_q), 'quarter_plan_raw': plan_q,
             'fact': fmt(fact_q), 'condition': condition, 'manager': manager,
-            'bonus_amount': fmt(bonus_q), 'bonus_amount_raw': bonus_q,
+            'bonus_amount': fmt(bonus_q) if bonus_q > 0 else '', 'bonus_amount_raw': bonus_q,
+            'has_bonus': bonus_q > 0,
             'remaining': fmt(max(0, plan_q - fact_q)), 'months': months_out,
             'products': products, 'product_count': len(products),
         })
