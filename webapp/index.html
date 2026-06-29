@@ -2284,7 +2284,7 @@ html.income-open,body.income-open{overflow:hidden!important;height:100%;}
     <div class="months-grid" id="monthsGrid"></div>
   </section>
 
-  <section>
+  <section id="bonusSection">
     <div class="section-title" data-i18n="bonusTitle">Бонусы</div>
     <div class="bonus-grid" id="bonusGrid"></div>
   </section>
@@ -2310,33 +2310,12 @@ html.income-open,body.income-open{overflow:hidden!important;height:100%;}
       <div class="faq-sub" data-i18n="faqSub">Частые вопросы</div>
     </div>
 
-    <div class="faq-mode-tabs">
-      <button class="faq-mode-tab active" data-mode="quick" onclick="setFaqMode('quick')" data-i18n="faqModeQuick">Быстрые ответы</button>
-      <button class="faq-mode-tab" data-mode="ai" onclick="setFaqMode('ai')" data-i18n="faqModeAi">✦ Спросить AI</button>
-    </div>
-
-    <!-- РЕЖИМ 1: Быстрые ответы (статичный FAQ) -->
+    <!-- Статичный FAQ (AI-режим убран) -->
     <div id="faqModeQuickView">
       <input class="faq-search" type="text" id="faqSearch" data-i18n-placeholder="faqSearch" placeholder="Найти вопрос...">
       <div class="faq-list" id="faqList"></div>
       <button class="faq-tour-btn" onclick="faqStartTour()" data-i18n="faqStartTour">▶ Запустить ознакомительный тур</button>
       <button class="faq-close-app-btn" onclick="closeWebApp()" data-i18n="faqCloseApp">✕ Закрыть приложение</button>
-    </div>
-
-    <!-- РЕЖИМ 2: AI-чат -->
-    <div id="faqModeAiView" style="display:none;">
-      <div class="ai-chat" id="aiChat">
-        <div class="ai-welcome">
-          <div class="ai-welcome-icon">✦</div>
-          <div class="ai-welcome-title" data-i18n="aiWelcomeTitle">AI-ассистент DATFO</div>
-          <div class="ai-welcome-sub" data-i18n="aiWelcomeSub">Задавайте вопросы о ваших данных, бонусах, проектах. Отвечу с учётом вашей аптеки.</div>
-        </div>
-      </div>
-      <div class="ai-suggestions" id="aiSuggestions"></div>
-      <div class="ai-input-area">
-        <input type="text" id="aiInput" data-i18n-placeholder="aiInputPlaceholder" placeholder="Задайте вопрос..." onkeypress="if(event.key==='Enter') sendAiQuestion()">
-        <button class="ai-send-btn" onclick="sendAiQuestion()" id="aiSendBtn">→</button>
-      </div>
     </div>
   </div>
 </div>

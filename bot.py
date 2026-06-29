@@ -26,7 +26,7 @@ from aiogram.filters import Command
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
     FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery,
-    WebAppInfo
+    WebAppInfo, MenuButtonWebApp, MenuButtonDefault
 )
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
@@ -225,6 +225,24 @@ def kb_webapp(tg_id, lang):
     ]])
 
 
+async def apply_menu_button(chat_id, tg_id, role, lang):
+    """Web App в кнопке-меню (≡) — ТОЛЬКО админам. Обычным юзерам/гостям ставим стандартное
+    меню: приложение они открывают исключительно через inline-кнопку под рассылкой."""
+    try:
+        if role in ('admin', 'superadmin') and WEB_APP_URL:
+            await bot.set_chat_menu_button(
+                chat_id=chat_id,
+                menu_button=MenuButtonWebApp(
+                    text=TEXTS[lang]['open_app'],
+                    web_app=WebAppInfo(url=f"{WEB_APP_URL}?tg_id={tg_id}"),
+                ),
+            )
+        else:
+            await bot.set_chat_menu_button(chat_id=chat_id, menu_button=MenuButtonDefault())
+    except Exception as e:
+        print(f"⚠️ set_chat_menu_button({chat_id}) failed: {e}")
+
+
 class AdminState(StatesGroup):
     waiting_for_inn_report = State()
     waiting_for_admin_add = State()
@@ -406,6 +424,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
         await update_user_role(tg_id, 'user')
         role = 'user'
         user = await get_user_data(tg_id)
+
+    # Кнопка-меню (≡) с Web App — только админам; юзерам/гостям стандартное меню.
+    await apply_menu_button(message.chat.id, tg_id, role, lang)
 
     if role == 'ghost':
         await message.answer(TEXTS[lang]['access_denied'], reply_markup=ReplyKeyboardRemove())
@@ -1308,6 +1329,21 @@ async def scheduled_tasks():
         await sync_dashboard()
 
 
+async def setup_menu_buttons():
+    """Стартовая настройка кнопки-меню: глобальный дефолт = стандартное меню (без Web App),
+    а всем известным админам выставляем Web App в меню (≡)."""
+    try:
+        await bot.set_chat_menu_button(menu_button=MenuButtonDefault())  # дефолт для всех юзеров
+    except Exception as e:
+        print(f"⚠️ global menu button reset failed: {e}")
+    try:
+        for u in await get_all_active_users():
+            if u['role'] in ('admin', 'superadmin'):
+                await apply_menu_button(u['telegram_id'], u['telegram_id'], u['role'], u['language'])
+    except Exception as e:
+        print(f"⚠️ admin menu buttons setup failed: {e}")
+
+
 async def main():
     print("🤖 Бот запущен (UPDATED: Poll Buttons Stay)!")
     # Гарантируем что все таблицы существуют (идемпотентно, CREATE IF NOT EXISTS).
@@ -1317,6 +1353,10 @@ async def main():
         await create_tables()
     except Exception as e:
         print(f"⚠️ create_tables failed: {e}")
+    try:
+        await setup_menu_buttons()
+    except Exception as e:
+        print(f"⚠️ setup_menu_buttons failed: {e}")
     asyncio.create_task(scheduled_tasks())
     api_port = int(os.getenv('API_PORT', '8080'))
     asyncio.create_task(start_api(port=api_port))

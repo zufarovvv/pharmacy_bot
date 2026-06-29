@@ -19,11 +19,14 @@
 }
 """
 import os
+import re
 
 import openpyxl
+from openpyxl.utils import column_index_from_string
 
 DEFAULT_PATH = os.path.join(os.path.dirname(__file__), 'data', 'plans.xlsx')
 SHEET = 'II-Q'
+SVOD_SHEET = 'svod'
 
 # Метки внутри блока проекта (стр.3) -> наш ключ
 LABEL_MAP = {
@@ -155,9 +158,9 @@ def load_plans(path=DEFAULT_PATH):
             for key, cidx in cols.items():
                 val = ws.cell(row=r, column=cidx + 1).value
                 rec[key] = (str(val).strip() if key == 'condition' else _num(val))
-            # берём проект, только если есть хоть какой-то план
-            if rec.get('plan_iiq', 0) or rec.get('plan_apr', 0) or rec.get('plan_may', 0) or rec.get('plan_jun', 0):
-                projects[pname] = rec
+            # Берём ВСЕ проекты (в т.ч. без плана/факта). Какие показать — решает статус
+            # 'Актив'/'Неактив' из листа svod (build_dashboard), а не наличие цифр.
+            projects[pname] = rec
 
         result[inn] = {
             'meta': {
@@ -176,6 +179,79 @@ def load_plans(path=DEFAULT_PATH):
         }
     wb.close()
     return {'blocks': [b[0] for b in blocks], 'pharmacies': result, 'base_cols': BC}
+
+
+def load_svod_inactive(path=DEFAULT_PATH):
+    """Лист «svod»: имена блоков II-Q, у которых статус 'Неактив' (глобально, как в файле).
+
+    Статус в svod — вписанный вручную текст (не формула), одинаков для всех ИНН. Сопоставление
+    «строка svod → блок II-Q» делаем по ФОРМУЛЕ строки (она ссылается на колонку II-Q внутри
+    нужного блока) — это надёжнее имён ('Synergy' в svod vs блок 'SYENERGY' в II-Q).
+
+    Возвращает set имён блоков (как в строке 2 II-Q). Если листа/формул нет — пустой set.
+    """
+    try:
+        wb = openpyxl.load_workbook(path, data_only=False)
+    except Exception:
+        return set()
+    try:
+        if SVOD_SHEET not in wb.sheetnames or SHEET not in wb.sheetnames:
+            return set()
+        wq = wb[SHEET]
+        row2 = [wq.cell(row=2, column=j + 1).value for j in range(wq.max_column)]
+        row3 = [wq.cell(row=3, column=j + 1).value for j in range(wq.max_column)]
+        # (start_col_1based, block_name) по возрастанию старта
+        blocks = [(j + 1, str(row2[j] or '').strip())
+                  for j, v in enumerate(row3) if _norm(v) == _norm('проект')]
+        if not blocks:
+            return set()
+        first_block = blocks[0][0]
+
+        def block_for_col(col):
+            name = None
+            for s, n in blocks:
+                if col >= s:
+                    name = n
+                else:
+                    break
+            return name
+
+        ws = wb[SVOD_SHEET]
+        # колонка «Статус» — по заголовку в верхних строках
+        status_col = None
+        for r in range(1, 9):
+            for c in range(1, ws.max_column + 1):
+                if _norm_match(ws.cell(row=r, column=c).value) == 'статус':
+                    status_col = c
+                    break
+            if status_col:
+                break
+        if not status_col:
+            return set()
+
+        inactive = set()
+        for r in range(1, ws.max_row + 1):
+            sval = str(ws.cell(row=r, column=status_col).value or '').strip().lower()
+            if not sval.startswith('неактив'):
+                continue
+            # первая ссылка на колонку II-Q внутри блока -> имя блока
+            chosen = None
+            for c in range(1, ws.max_column + 1):
+                f = ws.cell(row=r, column=c).value
+                if not isinstance(f, str):
+                    continue
+                for col_str in re.findall(r"II-Q'?!\$?([A-Z]+)\$?\d+", f):
+                    ci = column_index_from_string(col_str)
+                    if ci >= first_block:
+                        chosen = block_for_col(ci)
+                        break
+                if chosen:
+                    break
+            if chosen:
+                inactive.add(chosen)
+        return inactive
+    finally:
+        wb.close()
 
 
 if __name__ == '__main__':

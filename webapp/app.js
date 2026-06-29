@@ -834,38 +834,22 @@ function renderDashboard(pharm) {
   currentPharm = pharm;
   currentPharmInn = pharm.inn || null;
   const d = pharm.dashboard || {};
-  const isAdmin = !!(window.userData && window.userData.is_admin);
 
   renderPharmacy(pharm, d);
 
-  if (isAdmin) {
-    // Админ/суперадмин смотрит чужую аптеку для контроля — никаких CTA для аптек.
-    hidePharmacyTriggers();
-  } else {
-    renderAlertBar(d);
-    // bizHero теперь показывает ИСТОРИЮ доходов (за 8 мес), а heroLost —
-    // упущенную выгоду текущего квартала с CTA. Они дополняют друг друга,
-    // больше не дубликат.
-    renderLostOpportunity(d);
-  }
+  // До подключения реальных транзакционных данных скрываем все блоки на синтетике/заглушках:
+  // история заработка (bizHero), «соседи», продающие советы/упущенная выгода, промо, пустые
+  // бонусы. Показываем только реальное: квартал, динамику, месяцы, проекты.
+  hidePharmacyTriggers();
+  hideFakeSections();
 
-  renderIncome(d);
   renderStats(d.stats);
   renderQuarter(d.totals);
   renderDynamics(d.totals && d.totals.months ? d.totals.months : d.months);
   renderMonths(d.totals && d.totals.months ? d.totals.months : d.months);
-  renderBonuses(d.bonuses);
 
   allProjects = Array.isArray(d.projects) ? d.projects : [];
   renderProjects();
-  renderAdvice(d, pharm.inn);
-
-  if (!isAdmin) {
-    // renderStickyCta() убран — дублирует bizHero и конфликтует с FAQ-кнопкой.
-    const sticky = document.getElementById('stickyCta');
-    if (sticky) sticky.classList.remove('visible');
-    schedulePromo(d);
-  }
 }
 
 function hidePharmacyTriggers() {
@@ -880,6 +864,16 @@ function hidePharmacyTriggers() {
   // На случай если промо уже на экране (быстрое переключение):
   const promo = document.getElementById('promoOverlay');
   if (promo) promo.classList.remove('active');
+}
+
+function hideFakeSections() {
+  // Блоки на синтетике/заглушках скрыты до подключения реальных транзакционных данных:
+  // история заработка и «соседи» (bizHero/bizSecondary), продающие советы (adviceSection),
+  // пустые бонусы (bonusSection). Останутся реальные: квартал, динамика, месяцы, проекты.
+  ['bizHero', 'bizSecondary', 'adviceSection', 'bonusSection'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
 }
 
 // ============================================================
@@ -2365,7 +2359,6 @@ window.openFaq = function() {
     };
   }
   renderFaqList();
-  renderAiSuggestions();
   const overlay = document.getElementById('faqOverlay');
   if (overlay) overlay.classList.add('active');
   updateBackButton();

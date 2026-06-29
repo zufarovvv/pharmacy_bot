@@ -17,7 +17,7 @@ import asyncpg
 from dotenv import load_dotenv
 
 from projects_catalog import load_projects_catalog, PLAN_TO_CATALOG
-from plans_loader import load_plans, SHEET as PLANS_SHEET
+from plans_loader import load_plans, load_svod_inactive, SHEET as PLANS_SHEET
 
 load_dotenv()
 
@@ -27,7 +27,20 @@ MONTHS = [('plan_apr', 'fact_apr', 'april', 'апрель'),
 
 
 def fmt(n):
-    return f'{int(round(n)):,}'.replace(',', ' ')
+    """Сумма с пробелами-разделителями, БЕЗ округления (как в файле): целые — без дробной
+    части, дробные — до копеек (запятая), хвостовые нули убираем."""
+    n = float(n or 0)
+    sign = '-' if n < 0 else ''
+    n = abs(n)
+    whole = int(n)
+    kop = round((n - whole) * 100)
+    if kop >= 100:                 # напр. 99.999 -> переносим в целую часть
+        whole += 1
+        kop = 0
+    base = sign + f'{whole:,}'.replace(',', ' ')
+    if kop:
+        return f'{base},{kop:02d}'.rstrip('0').rstrip(',')
+    return base
 
 
 def _plan_key(name):
@@ -36,27 +49,27 @@ def _plan_key(name):
     return str(name).upper().replace(' ', '').replace('-', '').replace('\n', '').strip()
 
 
-def build_dashboard(inn, plan_rec, catalog):
+def build_dashboard(inn, plan_rec, catalog, excluded=None):
     cat_projects = catalog['projects']
+    excluded = excluded or set()
     projects_out = []
     q_plan = q_fact = q_bonus = 0.0
     completed = partial = critical = 0
 
     for plan_name, prec in plan_rec['projects'].items():
+        if _plan_key(plan_name) in excluded:
+            continue  # проект со статусом 'Неактив' в листе svod — не показываем
         plan_q = prec.get('plan_iiq', 0) or 0
         fact_q = sum(prec.get(fk, 0) or 0 for _, fk, _, _ in MONTHS)
-        if plan_q <= 0 and fact_q <= 0:
-            continue
+        # Показываем ВСЕ активные проекты (по статусу svod), даже без плана/факта —
+        # такие выводятся с прочерками. Скрытие — только по статусу 'Неактив' (выше).
         cat_name = PLAN_TO_CATALOG.get(_plan_key(plan_name))
         cinfo = cat_projects.get(cat_name) if cat_name else None
         condition = cinfo['condition'] if cinfo else ''
         manager = cinfo['manager'] if cinfo else ''
-        # Бонус проекта = факт × ставка бонуса аптеки (из Проекты.xlsx, по условию).
-        bonus_rate = 0.0
-        if cinfo:
-            bonus_rate = cinfo['bonus_rate_prodaja'] if condition == 'Продажа' else cinfo['bonus_rate_zakup']
+        # Бонусов в svod-файле нет — не считаем и не выдумываем (поля бонусов оставляем пустыми).
 
-        # Реальные товары проекта из каталога (Проекты.xlsx): название, закуп(CIP), бонус.
+        # Реальные товары проекта из каталога (Проекты.xlsx): название, закуп (CIP).
         by_fom = catalog['by_fom_id']
         products = []
         if cinfo:
@@ -69,8 +82,9 @@ def build_dashboard(inn, plan_rec, catalog):
                     'name': pr['name'],
                     'cip': pr['cip'],
                     'cip_fmt': fmt(pr['cip']),
-                    'bonus_zakup': pr['bonus_apt_zakup'],
-                    'bonus_prodaja': pr['bonus_apt_prodaja'],
+                    # Бонусов в svod нет — не показываем (0 => фронт скрывает «· бонус»).
+                    'bonus_zakup': 0,
+                    'bonus_prodaja': 0,
                 })
 
         months_out = {}
@@ -78,14 +92,16 @@ def build_dashboard(inn, plan_rec, catalog):
             mp = prec.get(pk, 0) or 0
             mf = prec.get(fk, 0) or 0
             months_out[mkey] = {'plan': fmt(mp), 'fact': fmt(mf),
+                                'plan_raw': mp, 'fact_raw': mf,
                                 'percent': round(mf / mp * 100) if mp else 0, 'label': mlabel}
 
         pct = round(fact_q / plan_q * 100) if plan_q else 0
-        bonus_q = fact_q * bonus_rate
+        bonus_q = 0.0  # бонусов в svod-файле нет
         status = 'completed' if pct >= 100 else ('partial' if pct >= 50 else 'critical')
-        completed += pct >= 100
-        partial += 50 <= pct < 100
-        critical += pct < 50
+        if plan_q > 0:                      # проекты без плана не считаем в счётчиках статусов
+            completed += pct >= 100
+            partial += 50 <= pct < 100
+            critical += pct < 50
         q_plan += plan_q
         q_fact += fact_q
         q_bonus += bonus_q
@@ -111,11 +127,12 @@ def build_dashboard(inn, plan_rec, catalog):
         'stats': {'completed': int(completed), 'partial': int(partial), 'critical': int(critical)},
         'months': _quarter_months(projects_out),
         'totals': {'quarter_plan': fmt(q_plan), 'quarter_plan_raw': q_plan,
-                   'quarter_percent': q_pct, 'total_bonus': fmt(q_bonus), 'total_bonus_raw': q_bonus,
+                   'quarter_percent': q_pct, 'total_bonus': '', 'total_bonus_raw': 0,
                    'remaining': fmt(max(0, q_plan - q_fact))},
-        'bonuses': {'accrued': {'amount': fmt(q_bonus), 'desc': 'бонус по факту закупа'},
-                    'completed': {'amount': fmt(q_bonus), 'desc': ''},
-                    'potential': {'amount': '0', 'desc': ''}},
+        # Бонусов в svod-файле нет — отдаём пустыми (фронт скрывает блок бонусов).
+        'bonuses': {'accrued': {'amount': '', 'desc': ''},
+                    'completed': {'amount': '', 'desc': ''},
+                    'potential': {'amount': '', 'desc': ''}},
         'projects': projects_out, 'income_quarter': fmt(q_fact),
         '_source': 'plans_IIQ',
     }
@@ -127,8 +144,8 @@ def _quarter_months(projects_out):
         pl = fa = 0.0
         for p in projects_out:
             mm = p['months'].get(mkey, {})
-            pl += float(str(mm.get('plan', '0')).replace(' ', '') or 0)
-            fa += float(str(mm.get('fact', '0')).replace(' ', '') or 0)
+            pl += mm.get('plan_raw', 0) or 0
+            fa += mm.get('fact_raw', 0) or 0
         agg[mkey] = {'plan': fmt(pl), 'fact': fmt(fa),
                      'percent': round(fa / pl * 100) if pl else 0, 'label': mlabel}
     return agg
@@ -171,12 +188,13 @@ async def save_many(dashboards):
         await conn.close()
 
 
-def build_all(catalog, plans):
+def build_all(catalog, plans, excluded=None):
     """Строит дашборды для всех аптек из планов. Возвращает (dashboards, skipped).
-    Пропускаем аптеки без единого проекта с планом/фактом."""
+    Пропускаем аптеки без единого проекта с планом/фактом. excluded — set ключей _plan_key
+    проектов со статусом 'Неактив' (из листа svod), они не показываются."""
     dashboards, skipped = [], 0
     for inn, rec in plans.items():
-        d = build_dashboard(inn, rec, catalog)
+        d = build_dashboard(inn, rec, catalog, excluded)
         if not d['projects']:
             skipped += 1
             continue
@@ -208,7 +226,8 @@ async def sync_plans_from_excel(file_path):
     """
     catalog = load_projects_catalog()
     plans = load_plans(file_path)['pharmacies']
-    dashboards, skipped = build_all(catalog, plans)
+    excluded = {_plan_key(n) for n in load_svod_inactive(file_path)}  # 'Неактив' из листа svod
+    dashboards, skipped = build_all(catalog, plans, excluded)
     if dashboards:
         await save_many(dashboards)
     with_fact = sum(1 for d in dashboards if d['totals']['quarter_percent'] > 0)
@@ -220,8 +239,10 @@ def sync_all():
     """Прогон ВСЕХ аптек из планов: строит дашборд из Excel и пишет в pharmacies."""
     catalog = load_projects_catalog()
     plans = load_plans()['pharmacies']
-    dashboards, skipped = build_all(catalog, plans)
-    print(f"Построено дашбордов: {len(dashboards)} | пропущено (без проектов): {skipped}")
+    excluded = {_plan_key(n) for n in load_svod_inactive()}
+    dashboards, skipped = build_all(catalog, plans, excluded)
+    print(f"Построено дашбордов: {len(dashboards)} | пропущено (без проектов): {skipped} "
+          f"| скрыто неактивных проектов (svod): {len(excluded)}")
     asyncio.run(save_many(dashboards))
     with_fact = sum(1 for d in dashboards if d['totals']['quarter_percent'] > 0)
     print(f"✅ Записано в pharmacies: {len(dashboards)} аптек (из них с фактом: {with_fact})")
@@ -232,7 +253,8 @@ def sync_one(inn, view_tg_id=None):
     plans = load_plans()['pharmacies']
     if str(inn) not in plans:
         print(f'❌ ИНН {inn} нет в планах'); return None
-    dashboard = build_dashboard(inn, plans[str(inn)], catalog)
+    excluded = {_plan_key(n) for n in load_svod_inactive()}
+    dashboard = build_dashboard(inn, plans[str(inn)], catalog, excluded)
 
     print(f"Аптека: {dashboard['name']} | ИНН {inn} | менеджер {dashboard['manager']} | {dashboard['region']}")
     print(f"  Квартал: план {dashboard['totals']['quarter_plan']} | факт {dashboard['income_quarter']} "
