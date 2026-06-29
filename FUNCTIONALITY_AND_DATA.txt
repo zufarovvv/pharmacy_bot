@@ -23,7 +23,7 @@ DATFO — ПОЛНЫЙ ФУНКЦИОНАЛ, ФАЙЛЫ И API
 - webapp/             Фронтенд (index.html, app.js, config.js, assets/).
 - mobile/             Capacitor-проект (оборачивает webapp/ в Android APK).
 
-Поток: DWH/Sheets -> синк-скрипты -> PostgreSQL -> api.py -> webapp (Telegram/APK).
+Поток: Excel/Sheets -> синк-скрипты -> PostgreSQL -> api.py -> webapp (Telegram/APK).
 
 
 ============================================================
@@ -153,7 +153,7 @@ DATFO — ПОЛНЫЙ ФУНКЦИОНАЛ, ФАЙЛЫ И API
 [ЕСТЬ] create_app_user.py  завести логин/пароль + привязать ИНН
 [ЕСТЬ] database.py         create_tables() — создаёт все таблицы
 
-[НУЖНО] products_sync.py   источник товаров (DWH/Excel/Sheets) -> products + pharmacy_products
+[НУЖНО] products_sync.py   источник товаров (Excel/Sheets) -> products + pharmacy_products
 [НУЖНО] миграция БД        CREATE TABLE products, pharmacy_products
 [НУЖНО] правка api.py      эндпоинт /api/products (или вложить в /api/pharmacy)
 [НУЖНО] правка webapp/app.js  вместо FAKE_PRODUCTS/getProductStatus/getPeerInfo
