@@ -31,7 +31,7 @@ import gspread
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 
-from database import upsert_pharmacy_full, upsert_pharmacy_dashboard_only
+from database import upsert_pharmacy_full, upsert_pharmacy_dashboard_only, patch_pharmacy_meta
 
 load_dotenv()
 
@@ -919,7 +919,7 @@ def _read_all_sheets():
     return results
 
 
-async def _apply_dashboard_updates(by_inn, source_label='DASH'):
+async def _apply_dashboard_updates(by_inn, source_label='DASH', meta_only=False):
     """
     Общий upsert для всех аптек.
 
@@ -927,6 +927,10 @@ async def _apply_dashboard_updates(by_inn, source_label='DASH'):
       одновременно проставляет владельца Telegram.
     - Аптеки без tg_id (из III-Q) → upsert_pharmacy_dashboard_only,
       сохраняем dashboard_data, привязку владельца не трогаем.
+
+    meta_only=True (режим Google-синка): НЕ перезаписываем цифры дашборда (ими владеет
+    xlsx-импорт), а только обновляем доступ (owner_tg_id) и сливаем контакты менеджера /
+    категорию внутрь существующего dashboard_data.
     """
     ok_with_tg = 0
     ok_no_tg = 0
@@ -936,6 +940,18 @@ async def _apply_dashboard_updates(by_inn, source_label='DASH'):
         legal_name = data.get('legal_name') or data.get('name') or inn
         display_name = data.get('name') or inn
         try:
+            if meta_only:
+                # Имя менеджера и регион/район — за xlsx (мастер-файл). Из Google берём
+                # только контакты менеджера и категорию (их в xlsx нет).
+                meta = {k: data[k] for k in ('manager_phone', 'manager_username', 'category')
+                        if data.get(k)}
+                await patch_pharmacy_meta(inn, owner_tg_id=data.get('tg_id'), meta=meta)
+                if data.get('tg_id'):
+                    ok_with_tg += 1
+                else:
+                    ok_no_tg += 1
+                per_pharm[inn] = {'name': display_name, 'tg_id': data.get('tg_id')}
+                continue
             if data.get('tg_id'):
                 await upsert_pharmacy_full(
                     inn=inn,
@@ -994,7 +1010,10 @@ async def sync_dashboard():
         print("⚠️ [DASH] Ни одного листа с ИНН не найдено.")
         return
 
-    await _apply_dashboard_updates(by_inn, source_label='DASH')
+    # Источник цифр дашборда — недельный xlsx-импорт (list «II-Q»). Google-синк теперь
+    # отвечает ТОЛЬКО за доступы (tg_id→ИНН), контакты менеджеров и базу знаний AI:
+    # обновляем мета-поля, цифры не трогаем.
+    await _apply_dashboard_updates(by_inn, source_label='DASH', meta_only=True)
 
 
 # ============================================================

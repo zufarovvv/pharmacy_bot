@@ -272,6 +272,33 @@ async def upsert_pharmacy_full(inn, owner_tg_id, business_name, pharmacy_name, d
     finally:
         await conn.close()
 
+
+async def patch_pharmacy_meta(inn, owner_tg_id, meta):
+    """Режим «Google владеет только доступами/менеджерами».
+
+    Обновляет привязку владельца (owner_tg_id) и СЛИВАЕТ мета-поля (контакты менеджера,
+    категория) внутрь существующего dashboard_data через JSONB `||`, НЕ затрагивая цифры
+    (totals/projects/months/bonuses/stats) — ими владеет xlsx-импорт.
+    Обновляет только уже существующие строки (xlsx-импорт создаёт их раньше).
+    """
+    conn = await get_connection()
+    try:
+        if owner_tg_id:
+            await conn.execute('''
+                INSERT INTO users (telegram_id, role, language)
+                VALUES ($1, 'user', 'ru')
+                ON CONFLICT (telegram_id) DO UPDATE
+                SET role = CASE WHEN users.role = 'ghost' THEN 'user' ELSE users.role END;
+            ''', owner_tg_id)
+        await conn.execute('''
+            UPDATE pharmacies
+            SET owner_tg_id = COALESCE($2, owner_tg_id),
+                dashboard_data = COALESCE(dashboard_data, '{}'::jsonb) || $3::jsonb
+            WHERE inn = $1;
+        ''', inn, owner_tg_id, json.dumps(meta or {}, ensure_ascii=False))
+    finally:
+        await conn.close()
+
 # --- ОПРОСЫ (НОВОЕ) ---
 
 async def create_poll(title):

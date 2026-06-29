@@ -17,7 +17,7 @@ import asyncpg
 from dotenv import load_dotenv
 
 from projects_catalog import load_projects_catalog, PLAN_TO_CATALOG
-from plans_loader import load_plans
+from plans_loader import load_plans, SHEET as PLANS_SHEET
 
 load_dotenv()
 
@@ -28,6 +28,12 @@ MONTHS = [('plan_apr', 'fact_apr', 'april', 'апрель'),
 
 def fmt(n):
     return f'{int(round(n)):,}'.replace(',', ' ')
+
+
+def _plan_key(name):
+    """Имя проекта из матрицы II-Q -> ключ PLAN_TO_CATALOG (без пробелов/дефисов/регистра).
+    Разные выгрузки пишут 'ASTRA ZENECA' / 'COMPLETE-PHARMA' / 'GETZ PHARMA' — сводим к ключу."""
+    return str(name).upper().replace(' ', '').replace('-', '').replace('\n', '').strip()
 
 
 def build_dashboard(inn, plan_rec, catalog):
@@ -41,7 +47,7 @@ def build_dashboard(inn, plan_rec, catalog):
         fact_q = sum(prec.get(fk, 0) or 0 for _, fk, _, _ in MONTHS)
         if plan_q <= 0 and fact_q <= 0:
             continue
-        cat_name = PLAN_TO_CATALOG.get(plan_name.upper())
+        cat_name = PLAN_TO_CATALOG.get(_plan_key(plan_name))
         cinfo = cat_projects.get(cat_name) if cat_name else None
         condition = cinfo['condition'] if cinfo else ''
         manager = cinfo['manager'] if cinfo else ''
@@ -165,18 +171,56 @@ async def save_many(dashboards):
         await conn.close()
 
 
+def build_all(catalog, plans):
+    """Строит дашборды для всех аптек из планов. Возвращает (dashboards, skipped).
+    Пропускаем аптеки без единого проекта с планом/фактом."""
+    dashboards, skipped = [], 0
+    for inn, rec in plans.items():
+        d = build_dashboard(inn, rec, catalog)
+        if not d['projects']:
+            skipped += 1
+            continue
+        dashboards.append(d)
+    return dashboards, skipped
+
+
+def has_plans_sheet(path):
+    """True, если книга содержит лист матрицы планов «II-Q» (формат СВОД-total)."""
+    import openpyxl
+    try:
+        wb = openpyxl.load_workbook(path, read_only=True)
+        try:
+            return PLANS_SHEET in wb.sheetnames
+        finally:
+            wb.close()
+    except Exception:
+        return False
+
+
+async def sync_plans_from_excel(file_path):
+    """Импорт недельного файла СВОД (лист «II-Q») -> dashboard_data всех аптек.
+
+    План/факт по проектам берём из загруженного файла; справочник товаров, бонусных
+    ставок и условий — из бандла data/projects.xlsx (его загрузка не требует файла).
+    owner_tg_id не трогаем (привязка аптек к Telegram живёт отдельно).
+
+    Возвращает {pharmacies, updated, with_fact, skipped}.
+    """
+    catalog = load_projects_catalog()
+    plans = load_plans(file_path)['pharmacies']
+    dashboards, skipped = build_all(catalog, plans)
+    if dashboards:
+        await save_many(dashboards)
+    with_fact = sum(1 for d in dashboards if d['totals']['quarter_percent'] > 0)
+    return {'pharmacies': len(plans), 'updated': len(dashboards),
+            'with_fact': with_fact, 'skipped': skipped}
+
+
 def sync_all():
     """Прогон ВСЕХ аптек из планов: строит дашборд из Excel и пишет в pharmacies."""
     catalog = load_projects_catalog()
     plans = load_plans()['pharmacies']
-    dashboards = []
-    skipped = 0
-    for inn, rec in plans.items():
-        d = build_dashboard(inn, rec, catalog)
-        if not d['projects']:          # нет проектов с планом/фактом — пропускаем
-            skipped += 1
-            continue
-        dashboards.append(d)
+    dashboards, skipped = build_all(catalog, plans)
     print(f"Построено дашбордов: {len(dashboards)} | пропущено (без проектов): {skipped}")
     asyncio.run(save_many(dashboards))
     with_fact = sum(1 for d in dashboards if d['totals']['quarter_percent'] > 0)

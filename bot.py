@@ -95,6 +95,7 @@ from database import (
 )
 from screenshot import update_inn_in_sheet, take_screenshot
 from dashboard_sync import sync_dashboard, sync_dashboard_from_excel
+from plans_sync import sync_plans_from_excel, has_plans_sheet
 from api import start_api
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -154,7 +155,7 @@ TEXTS = {
         'file_accepted': "✅ Файл принят. ID найдены.",
         'open_app': "📱 Открыть приложение",
         'upload_excel': "📥 Загрузить Excel",
-        'upload_excel_prompt': "📥 Пришлите .xlsx файл с дашбордами аптек (формат «Свод таб», один лист = одна аптека).\n\nДанные сразу обновятся в Mini App.",
+        'upload_excel_prompt': "📥 Пришлите .xlsx файл с данными аптек.\n\nПоддерживается недельный СВОД (лист «II-Q», все аптеки сразу) и старый формат «Свод таб». Формат определяется автоматически.\n\nДанные сразу обновятся в Mini App.",
         'upload_excel_processing': "⏳ Парсю Excel и обновляю аптеки...",
         'upload_excel_bad_ext': "❌ Это не .xlsx файл.",
         'upload_excel_too_big': "❌ Файл слишком большой (максимум 20 МБ).",
@@ -205,7 +206,7 @@ TEXTS = {
         'file_accepted': "✅ Fayl qabul qilindi. IDlar topildi.",
         'open_app': "📱 Ilovani ochish",
         'upload_excel': "📥 Excel yuklash",
-        'upload_excel_prompt': "📥 Dorixonalar dashboardlari bilan .xlsx faylni yuboring («Свод таб» formati, bir varaq = bir dorixona).\n\nMa'lumotlar darhol Mini App ga yangilanadi.",
+        'upload_excel_prompt': "📥 Dorixonalar ma'lumotlari bilan .xlsx faylni yuboring.\n\nHaftalik SVOD («II-Q» varaq, barcha dorixonalar) va eski «Свод таб» formati qo'llab-quvvatlanadi. Format avtomatik aniqlanadi.\n\nMa'lumotlar darhol Mini App ga yangilanadi.",
         'upload_excel_processing': "⏳ Excel tahlil qilinmoqda va dorixonalar yangilanmoqda...",
         'upload_excel_bad_ext': "❌ Bu .xlsx fayl emas.",
         'upload_excel_too_big': "❌ Fayl juda katta (maksimal 20 MB).",
@@ -1220,7 +1221,13 @@ async def upload_dashboard_excel_recv(message: types.Message, state: FSMContext)
     status_msg = await message.answer(TEXTS[lang]['upload_excel_processing'])
 
     try:
-        result = await sync_dashboard_from_excel(file_path)
+        # Авто-роутинг по формату: если есть лист матрицы «II-Q» (недельный СВОД) —
+        # импорт планов; иначе старый формат «Свод таб» / «III-Q».
+        if has_plans_sheet(file_path):
+            result = await sync_plans_from_excel(file_path)
+            result['_kind'] = 'plans'
+        else:
+            result = await sync_dashboard_from_excel(file_path)
     except Exception as e:
         result = {'error': f'{type(e).__name__}: {e}', 'updated': 0}
     finally:
@@ -1230,6 +1237,14 @@ async def upload_dashboard_excel_recv(message: types.Message, state: FSMContext)
     # Формируем отчёт + опционально шлём уведомление владельцу аптеки
     if result.get('error'):
         text = f"❌ Ошибка: {result['error']}"
+    elif result.get('_kind') == 'plans':
+        # Массовый импорт недельного файла СВОД (лист «II-Q»)
+        text = (
+            f"✅ Импорт планов (лист «II-Q») завершён.\n"
+            f"Аптек в файле: <b>{result['pharmacies']}</b>\n"
+            f"Обновлено дашбордов: <b>{result['updated']}</b> (с фактом: {result['with_fact']})\n"
+            f"Пропущено (без проектов): {result['skipped']}"
+        )
     elif result.get('updated') == 1:
         # Менеджер обновил одну аптеку через лист "Свод таб new"
         per_pharm = result.get('per_pharm') or {}

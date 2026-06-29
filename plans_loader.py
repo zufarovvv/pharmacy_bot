@@ -53,8 +53,46 @@ def _num(v):
 
 
 def _norm(s):
-    """Нормализует заголовок: убирает пробелы/регистр для сравнения."""
-    return (str(s) if s is not None else '').replace(' ', '').replace('\n', '').strip()
+    """Нормализует заголовок для сравнения: убирает пробелы, дефисы, переносы.
+    Дефисы убираем, т.к. в разных выгрузках метки пишут и слитно ('ПЛАНIIQ2026'),
+    и через дефис ('ПЛАН -II-Q-2026') — после нормализации они совпадают."""
+    return (str(s) if s is not None else '').replace(' ', '').replace('-', '').replace('\n', '').strip()
+
+
+def _norm_match(s):
+    """Как _norm, но ещё и в нижний регистр — для матча базовых заголовков (RU+Latin)."""
+    return _norm(s).lower()
+
+
+# Базовые (мета) колонки матрицы определяем по тексту заголовка в стр.3,
+# а не по фиксированным позициям — разные выгрузки сдвигают колонки.
+# (наш ключ, предикат на нормализованном заголовке). Первое совпадение слева побеждает.
+BASE_MATCHERS = [
+    ('inn',      lambda h: h == 'инн'),
+    ('legal',    lambda h: 'юридическ' in h),
+    ('pharmacy', lambda h: h in ('аптеки', 'аптека')),
+    ('network',  lambda h: 'сеть' in h),
+    ('n_apt',    lambda h: h.startswith('кол') or 'колво' in h),
+    ('manager',  lambda h: h in ('менежер', 'менеджер')),
+    ('region',   lambda h: h == 'регион'),
+    ('district', lambda h: h == 'район'),
+    ('plan_iiq', lambda h: h.startswith('plan')),
+    ('fact_iiq', lambda h: h.startswith('fact')),
+]
+
+
+def _detect_base_cols(row3_norm, limit):
+    """Находит индексы базовых колонок в стр.3 (сканируем только до первого блока проекта)."""
+    cols = {}
+    for j in range(min(limit, len(row3_norm))):
+        h = row3_norm[j]
+        if not h:
+            continue
+        for key, pred in BASE_MATCHERS:
+            if key not in cols and pred(h):
+                cols[key] = j
+                break
+    return cols
 
 
 def _detect_blocks(ws):
@@ -83,14 +121,23 @@ def load_plans(path=DEFAULT_PATH):
     ws = wb[SHEET]
     blocks = _detect_blocks(ws)
 
-    # Базовые колонки (0-based): B=1 ИНН, F=5 юр, G=6 аптеки, H=7 сеть, I=8 кол-во,
-    # J=9 менеджер, K=10 регион, L=11 район, O=14 Plan(IIQ), P=15 Fact(IIQ)
-    BC = {'inn': 1, 'legal': 5, 'pharmacy': 6, 'network': 7, 'n_apt': 8,
-          'manager': 9, 'region': 10, 'district': 11, 'plan_iiq': 14, 'fact_iiq': 15}
+    # Базовые (мета) колонки определяем по заголовкам стр.3 (позиции плавают между выгрузками).
+    row3_vals = [ws.cell(row=3, column=j + 1).value for j in range(ws.max_column)]
+    starts = [j for j, v in enumerate(row3_vals) if _norm(v) == _norm('проект')]
+    first_block = min(starts) if starts else ws.max_column
+    BC = _detect_base_cols([_norm_match(v) for v in row3_vals], first_block)
+    if 'inn' not in BC:
+        wb.close()
+        raise ValueError("Лист «II-Q»: не нашёл колонку «ИНН» в строке 3 — формат не распознан.")
+
+    def base(r, key):
+        j = BC.get(key)
+        return ws.cell(row=r, column=j + 1).value if j is not None else None
 
     result = {}
-    for r in range(5, ws.max_row + 1):
-        inn_v = ws.cell(row=r, column=BC['inn'] + 1).value
+    # Данные начинаются сразу после шапки (стр.3). Строка ИТОГО (ИНН '-' или 7777) отсеется.
+    for r in range(4, ws.max_row + 1):
+        inn_v = base(r, 'inn')
         if inn_v is None:
             continue
         try:
@@ -102,7 +149,7 @@ def load_plans(path=DEFAULT_PATH):
 
         projects = {}
         for pname, cols in blocks:
-            if pname.upper() == 'DATFOIIQ':  # это общий итог, не проект
+            if pname.upper().replace(' ', '').replace('-', '') == 'DATFOIIQ':  # общий итог, не проект
                 continue
             rec = {}
             for key, cidx in cols.items():
@@ -114,21 +161,21 @@ def load_plans(path=DEFAULT_PATH):
 
         result[inn] = {
             'meta': {
-                'name': ws.cell(row=r, column=BC['legal'] + 1).value or '',
-                'network': ws.cell(row=r, column=BC['network'] + 1).value or '',
-                'n_apt': _num(ws.cell(row=r, column=BC['n_apt'] + 1).value),
-                'manager': ws.cell(row=r, column=BC['manager'] + 1).value or '',
-                'region': ws.cell(row=r, column=BC['region'] + 1).value or '',
-                'district': ws.cell(row=r, column=BC['district'] + 1).value or '',
+                'name': base(r, 'legal') or '',
+                'network': base(r, 'network') or '',
+                'n_apt': _num(base(r, 'n_apt')),
+                'manager': base(r, 'manager') or '',
+                'region': base(r, 'region') or '',
+                'district': base(r, 'district') or '',
             },
             'total': {
-                'plan_iiq': _num(ws.cell(row=r, column=BC['plan_iiq'] + 1).value),
-                'fact_iiq': _num(ws.cell(row=r, column=BC['fact_iiq'] + 1).value),
+                'plan_iiq': _num(base(r, 'plan_iiq')),
+                'fact_iiq': _num(base(r, 'fact_iiq')),
             },
             'projects': projects,
         }
     wb.close()
-    return {'blocks': [b[0] for b in blocks], 'pharmacies': result}
+    return {'blocks': [b[0] for b in blocks], 'pharmacies': result, 'base_cols': BC}
 
 
 if __name__ == '__main__':
