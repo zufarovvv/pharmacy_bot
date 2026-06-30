@@ -77,14 +77,16 @@ def build_dashboard(inn, plan_rec, catalog, excluded=None):
                 pr = by_fom.get(fid)
                 if not pr:
                     continue
+                bonus_val = pr.get('bonus_apt_zakup', 0) or pr.get('bonus_apt_prodaja', 0)
                 products.append({
                     'fom_id': fid,
                     'name': pr['name'],
                     'cip': pr['cip'],
                     'cip_fmt': fmt(pr['cip']),
-                    # Бонусов в svod нет — не показываем (0 => фронт скрывает «· бонус»).
-                    'bonus_zakup': 0,
-                    'bonus_prodaja': 0,
+                    # Бонус аптеки на товар — из каталога (реальные данные листа).
+                    'bonus': bonus_val,
+                    'bonus_fmt': fmt(bonus_val) if bonus_val > 0 else '',
+                    'comment': pr.get('comment', ''),
                 })
 
         months_out = {}

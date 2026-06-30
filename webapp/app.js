@@ -2940,20 +2940,25 @@ window.showProjectProducts = function(projectName) {
   const clr = brandColor(projectName);
   const letter = brandLetter(projectName);
 
-  const itemsHtml = products.length ? products.map(p => {
+  const head = currentLang === 'uz'
+    ? { name: 'Mahsulot', zakup: 'Xarid', bonus: 'Bonus' }
+    : { name: 'Товар', zakup: 'Закуп', bonus: 'Бонус' };
+  const COLS = 'grid-template-columns:1fr 86px 68px; gap:8px;';
+  const rowsHtml = products.length ? products.map(p => {
     const cip = p.cip_fmt || (p.cip != null ? formatMoney(p.cip) : '—');
-    const bonus = (p.bonus_zakup && p.bonus_zakup > 0) ? ` · ${L.bonus} ${formatMoney(p.bonus_zakup)}` : '';
+    const bonus = p.bonus_fmt || '—';
+    const comment = (p.comment || '').trim();
     return `
-      <div class="prod-item">
-        <div class="prod-row" style="cursor:default;">
-          <div class="prod-avatar-sm" style="background:${clr};">${letter}</div>
-          <div class="prod-row-main">
-            <div class="prod-row-name">${escapeHtml(p.name)}</div>
-            <div class="prod-row-sub">${L.zakup} ${cip} ${money}${bonus}</div>
-          </div>
-        </div>
+      <div style="display:grid; ${COLS} align-items:start; padding:9px 14px; border-bottom:1px solid rgba(0,0,0,0.06);">
+        <div style="font-size:13px; font-weight:600; line-height:1.25; word-break:break-word;">${escapeHtml(p.name)}${comment ? `<div style="font-size:11px; font-weight:400; color:var(--danger,#c0392b); margin-top:2px;">${escapeHtml(comment)}</div>` : ''}</div>
+        <div style="font-size:12.5px; text-align:right; white-space:nowrap;">${cip}</div>
+        <div style="font-size:12.5px; text-align:right; white-space:nowrap; color:${bonus === '—' ? 'var(--text-secondary,#9a9a9a)' : 'var(--success,#1f9d55)'};">${bonus}</div>
       </div>`;
   }).join('') : `<div class="empty-state" style="padding:24px;"><div class="empty-state-icon">📦</div><div>${L.empty}</div></div>`;
+  const tableHtml = products.length ? `
+      <div style="display:grid; ${COLS} padding:8px 14px; font-size:11px; font-weight:700; color:var(--text-secondary,#9a9a9a); text-transform:uppercase; letter-spacing:0.3px; border-bottom:2px solid rgba(0,0,0,0.1);">
+        <div>${head.name}</div><div style="text-align:right;">${head.zakup} (${money})</div><div style="text-align:right;">${head.bonus}</div>
+      </div>${rowsHtml}` : rowsHtml;
 
   const safe = escapeHtml(projectName).replace(/'/g, "\\'");
   overlay.innerHTML = `
@@ -2963,7 +2968,7 @@ window.showProjectProducts = function(projectName) {
         <div class="prod-project-name">${escapeHtml(projectName)}</div>
         <div class="prod-project-sub">${L.sub}: ${products.length}</div>
       </div>
-      <div class="prod-list">${itemsHtml}</div>
+      <div class="prod-list">${tableHtml}</div>
       <div class="prod-footer-cta">
         <button class="prod-final-cta" onclick="productCtaClick('${safe}')">${L.cta}</button>
       </div>
