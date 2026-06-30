@@ -24,6 +24,7 @@
    20: Сумма бонуса (заработано)
 """
 import asyncio
+import json
 import os
 from collections import defaultdict
 
@@ -31,7 +32,9 @@ import gspread
 from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 
-from database import upsert_pharmacy_full, upsert_pharmacy_dashboard_only, patch_pharmacy_meta
+import managers_geo as mg
+from database import (upsert_pharmacy_full, upsert_pharmacy_dashboard_only,
+                      patch_pharmacy_meta, get_connection)
 
 load_dotenv()
 
@@ -41,6 +44,12 @@ SCOPES = [
 ]
 CREDS_FILE = os.getenv('GOOGLE_CREDS_FILE', 'creds.json')
 DASHBOARD_SHEET_ID = os.getenv('DASHBOARD_SHEET_ID')
+
+# Отдельная таблица «Info managers»: территория менеджеров (регион/район).
+# ID берётся из .env (как DASHBOARD_SHEET_ID) — в код не зашиваем.
+MANAGERS_GEO_SHEET_ID = os.getenv('MANAGERS_GEO_SHEET_ID')
+# Имя листа; пусто = первый лист книги.
+MANAGERS_GEO_WORKSHEET = os.getenv('MANAGERS_GEO_WORKSHEET', '')
 
 # Имена месяцев в этом же порядке как в листе (jan/feb/mar)
 MONTHS_RU = ['january', 'february', 'march']
@@ -993,6 +1002,76 @@ async def _apply_dashboard_updates(by_inn, source_label='DASH', meta_only=False)
     }
 
 
+def _read_geo_managers_rows():
+    """Читает лист территорий менеджеров из таблицы 'Info managers'.
+
+    Возвращает 2D-список значений или None при ошибке (нет доступа / не открылась).
+    """
+    creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
+    client = gspread.authorize(creds)
+    wb = client.open_by_key(MANAGERS_GEO_SHEET_ID)
+    ws = None
+    if MANAGERS_GEO_WORKSHEET:
+        ws = next((w for w in wb.worksheets() if w.title == MANAGERS_GEO_WORKSHEET), None)
+    if ws is None:
+        ws = wb.sheet1
+    return ws.get_all_values()
+
+
+async def assign_geo_managers(source_label='GEO'):
+    """Привязывает менеджера к аптеке по региону/району из таблицы 'Info managers'.
+
+    Регион/район берём из БД (ими владеет xlsx-импорт; в III-Q их нет), матчим через
+    managers_geo и патчим manager / manager_phone / manager_username прямо в
+    dashboard_data (JSONB merge, цифры не трогаем). Одно соединение на весь проход.
+    """
+    if not MANAGERS_GEO_SHEET_ID:
+        print(f"⚠️ [{source_label}] MANAGERS_GEO_SHEET_ID не задан в .env — гео-привязка пропущена")
+        return
+    loop = asyncio.get_running_loop()
+    try:
+        rows = await loop.run_in_executor(None, _read_geo_managers_rows)
+    except Exception as e:
+        print(f"⚠️ [{source_label}] таблица менеджеров: {type(e).__name__}: {e}")
+        return
+
+    managers = mg.parse_managers(rows)
+    if not managers:
+        print(f"⚠️ [{source_label}] территориальных менеджеров не найдено — пропуск")
+        return
+    region_idx, district_idx = mg.build_geo_index(managers)
+
+    conn = await get_connection()
+    try:
+        pharm = await conn.fetch(
+            "SELECT inn, dashboard_data->>'region' AS region, "
+            "dashboard_data->>'district' AS district FROM pharmacies")
+        matched = 0
+        per_mgr = defaultdict(int)
+        for p in pharm:
+            m = mg.match_manager(p['region'], p['district'], region_idx, district_idx)
+            if not m:
+                continue
+            meta = {
+                'manager': m['display_name'],
+                'manager_phone': m['phone'],
+                'manager_username': m['username'],
+                'manager_tg_id': '',  # в гео-таблице нет числового id; ссылка — по username
+            }
+            await conn.execute(
+                "UPDATE pharmacies "
+                "SET dashboard_data = COALESCE(dashboard_data, '{}'::jsonb) || $2::jsonb "
+                "WHERE inn = $1",
+                p['inn'], json.dumps(meta, ensure_ascii=False))
+            matched += 1
+            per_mgr[m['display_name']] += 1
+    finally:
+        await conn.close()
+
+    print(f"  ✓ [{source_label}] Гео-менеджеры: привязано {matched}/{len(pharm)} аптек "
+          f"({len(per_mgr)} менеджеров)")
+
+
 async def sync_dashboard():
     if not DASHBOARD_SHEET_ID:
         print("⚠️ [DASH] DASHBOARD_SHEET_ID не задан в .env — синк пропущен")
@@ -1014,6 +1093,10 @@ async def sync_dashboard():
     # отвечает ТОЛЬКО за доступы (tg_id→ИНН), контакты менеджеров и базу знаний AI:
     # обновляем мета-поля, цифры не трогаем.
     await _apply_dashboard_updates(by_inn, source_label='DASH', meta_only=True)
+
+    # Менеджер аптеки определяется её регионом/районом (таблица 'Info managers').
+    # Делаем это последним шагом — гео-привязка перекрывает контакты по имени.
+    await assign_geo_managers(source_label='DASH-GEO')
 
 
 # ============================================================
@@ -1126,7 +1209,10 @@ async def sync_dashboard_from_excel(file_path):
     if not by_inn:
         return {'error': 'Ни одного листа с ИНН не найдено', 'updated': 0}
 
-    return await _apply_dashboard_updates(by_inn, source_label='XLSX')
+    summary = await _apply_dashboard_updates(by_inn, source_label='XLSX')
+    # Менеджер аптеки — по её региону/району (таблица 'Info managers').
+    await assign_geo_managers(source_label='XLSX-GEO')
+    return summary
 
 
 if __name__ == "__main__":
