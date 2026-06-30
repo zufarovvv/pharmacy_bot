@@ -108,6 +108,7 @@ const LANG = {
     monthJanShort: 'Янв', monthFebShort: 'Фев', monthMarShort: 'Мар',
     monthApr: 'Апрель', monthMay: 'Май', monthJun: 'Июнь',
     monthAprShort: 'Апр', monthMayShort: 'Май', monthJunShort: 'Июн',
+    monthsAllProjects: 'Все проекты', monthsProjQuarter: 'Квартал по проекту',
     monthFact: 'Факт', monthPlan: 'План',
     bonusTitle: 'Бонусы',
     bonusSub: 'Выплаты по программам DATFO',
@@ -351,6 +352,7 @@ const LANG = {
     monthJanShort: 'Yan', monthFebShort: 'Fev', monthMarShort: 'Mar',
     monthApr: 'Aprel', monthMay: 'May', monthJun: 'Iyun',
     monthAprShort: 'Apr', monthMayShort: 'May', monthJunShort: 'Iyn',
+    monthsAllProjects: 'Barcha loyihalar', monthsProjQuarter: 'Loyiha choragi',
     monthFact: 'Sotildi', monthPlan: 'Reja',
     bonusTitle: 'Bonuslar',
     bonusSub: "DATFO loyihalari uchun to'lovlar",
@@ -851,6 +853,7 @@ function renderDashboard(pharm) {
   renderQuarter(d.totals);
   renderDynamics(d.totals && d.totals.months ? d.totals.months : d.months);
   renderMonths(d.totals && d.totals.months ? d.totals.months : d.months);
+  populateMonthsSelect(d);
 
   allProjects = Array.isArray(d.projects) ? d.projects : [];
   renderProjects();
@@ -2087,6 +2090,41 @@ function renderMonths(months) {
       </div>`;
   }).join('');
 }
+
+// Селектор проекта для секции «ПО МЕСЯЦАМ»: «Все проекты» (агрегат) или конкретный проект.
+function populateMonthsSelect(d) {
+  const sel = document.getElementById('monthsProjectSelect');
+  if (!sel) return;
+  const projects = Array.isArray(d.projects) ? d.projects : [];
+  sel.innerHTML = ['<option value="__all__">' + t('monthsAllProjects') + '</option>']
+    .concat(projects.map((p, i) => `<option value="${i}">${escapeHtml(p.name || '')}</option>`)).join('');
+  sel.value = '__all__';
+  const q = document.getElementById('monthsProjQuarter');
+  if (q) q.style.display = 'none';
+}
+
+window.onMonthsProjectChange = function() {
+  const sel = document.getElementById('monthsProjectSelect');
+  const d = (currentPharm && currentPharm.dashboard) || {};
+  const q = document.getElementById('monthsProjQuarter');
+  if (!sel) return;
+  if (sel.value === '__all__') {
+    renderMonths(d.totals && d.totals.months ? d.totals.months : d.months);
+    if (q) q.style.display = 'none';
+    return;
+  }
+  const p = (d.projects || [])[Number(sel.value)];
+  if (!p) return;
+  renderMonths(p.months || {});               // месяцы выбранного проекта
+  if (q) {
+    const pct = Number(p.percent || 0);
+    const color = pct >= 100 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
+    q.style.display = '';
+    q.innerHTML = `<b>${t('monthsProjQuarter')}</b> · ${t('monthFact')} <b>${escapeHtml(p.fact || '—')}</b>`
+      + ` / ${t('monthPlan')} <b>${escapeHtml(p.quarter_plan || p.plan || '—')}</b>`
+      + ` · <b style="color:${color};">${pct}%</b>`;
+  }
+};
 
 function renderBonuses(bonuses) {
   bonuses = bonuses || {};

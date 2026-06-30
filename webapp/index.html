@@ -2281,7 +2281,9 @@ html.income-open,body.income-open{overflow:hidden!important;height:100%;}
 
   <section>
     <div class="section-title" data-i18n="monthsTitle">По месяцам</div>
-    <div class="months-grid" id="monthsGrid"></div>
+    <select id="monthsProjectSelect" class="status-select" style="width:100%; margin-top:8px;" onchange="onMonthsProjectChange()"></select>
+    <div id="monthsProjQuarter" style="display:none; margin-top:8px; padding:10px 12px; background:rgba(0,0,0,0.04); border-radius:10px; font-size:14px;"></div>
+    <div class="months-grid" id="monthsGrid" style="margin-top:8px;"></div>
   </section>
 
   <section id="bonusSection">
