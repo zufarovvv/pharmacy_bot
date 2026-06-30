@@ -106,6 +106,8 @@ const LANG = {
     monthsSub: 'Закрытый месяц — выплата на счёт',
     monthJan: 'Январь', monthFeb: 'Февраль', monthMar: 'Март',
     monthJanShort: 'Янв', monthFebShort: 'Фев', monthMarShort: 'Мар',
+    monthApr: 'Апрель', monthMay: 'Май', monthJun: 'Июнь',
+    monthAprShort: 'Апр', monthMayShort: 'Май', monthJunShort: 'Июн',
     monthFact: 'Факт', monthPlan: 'План',
     bonusTitle: 'Бонусы',
     bonusSub: 'Выплаты по программам DATFO',
@@ -347,6 +349,8 @@ const LANG = {
     monthsSub: "Har yopilgan oy — hisobingizga pul",
     monthJan: 'Yanvar', monthFeb: 'Fevral', monthMar: 'Mart',
     monthJanShort: 'Yan', monthFebShort: 'Fev', monthMarShort: 'Mar',
+    monthApr: 'Aprel', monthMay: 'May', monthJun: 'Iyun',
+    monthAprShort: 'Apr', monthMayShort: 'May', monthJunShort: 'Iyn',
     monthFact: 'Sotildi', monthPlan: 'Reja',
     bonusTitle: 'Bonuslar',
     bonusSub: "DATFO loyihalari uchun to'lovlar",
@@ -1521,7 +1525,7 @@ function renderBizHero(d) {
   // Сумма продаж квартала из фактов месяцев
   const months = totals.months || d.months || {};
   let revenue = 0;
-  ['january', 'february', 'march'].forEach(m => {
+  ['april', 'may', 'june'].forEach(m => {
     revenue += parseMoney((months[m] && months[m].fact) || '0');
   });
 
@@ -1775,7 +1779,7 @@ function renderAlertBar(d) {
   // Новая аптека — ещё не заработала: зовём в крупные проекты, без «вы отстаёте»
   const months = (d.totals && d.totals.months) || d.months || {};
   let revenue = 0;
-  ['january', 'february', 'march'].forEach(m => { revenue += parseMoney((months[m] && months[m].fact) || '0'); });
+  ['april', 'may', 'june'].forEach(m => { revenue += parseMoney((months[m] && months[m].fact) || '0'); });
   const isNew = accrued <= 0 && (stats.completed || 0) <= 0 && revenue <= 0;
 
   bar.className = 'alert-bar';
@@ -2018,9 +2022,9 @@ function renderQuarter(totals) {
 function renderDynamics(months) {
   months = months || {};
   const order = [
-    ['january', t('monthJanShort')],
-    ['february', t('monthFebShort')],
-    ['march', t('monthMarShort')],
+    ['april', t('monthAprShort')],
+    ['may', t('monthMayShort')],
+    ['june', t('monthJunShort')],
   ];
   const data = order.map(([key, label]) => {
     const m = months[key] || {};
@@ -2054,9 +2058,9 @@ function renderDynamics(months) {
 function renderMonths(months) {
   months = months || {};
   const order = [
-    ['january', t('monthJan')],
-    ['february', t('monthFeb')],
-    ['march', t('monthMar')],
+    ['april', t('monthApr')],
+    ['may', t('monthMay')],
+    ['june', t('monthJun')],
   ];
   const grid = document.getElementById('monthsGrid');
   grid.innerHTML = order.map(([key, label]) => {
