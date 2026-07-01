@@ -232,6 +232,11 @@ async def sync_plans_from_excel(file_path):
     dashboards, skipped = build_all(catalog, plans, excluded)
     if dashboards:
         await save_many(dashboards)
+        # Контактов менеджера в файле нет, а полная перезапись dashboard_data их затирает —
+        # сразу восстанавливаем по региону/району (иначе кнопка «Связаться» пропадёт до
+        # следующего гео-синка). Ленивый импорт — чтобы не тянуть dashboard_sync без нужды.
+        from dashboard_sync import assign_geo_managers
+        await assign_geo_managers(source_label='XLSX-GEO')
     with_fact = sum(1 for d in dashboards if d['totals']['quarter_percent'] > 0)
     return {'pharmacies': len(plans), 'updated': len(dashboards),
             'with_fact': with_fact, 'skipped': skipped}
