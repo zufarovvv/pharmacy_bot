@@ -28,6 +28,7 @@ from database import (
     log_event, get_event_stats,
     get_pharmacies_by_inns, get_app_user_by_login, get_app_user_inns,
     create_session, get_app_user_by_token, delete_session,
+    get_payment_history_map,
 )
 from dashboard_sync import get_knowledge_cache
 
@@ -240,6 +241,10 @@ async def handle_me(request: web.Request):
     if is_admin:
         pharm_payload = [_slim_pharmacy(p) for p in pharm_dicts_full]
     else:
+        # История выплат (таблица payments) — фронт рисует блок «История дохода».
+        pay_map = await get_payment_history_map([p['inn'] for p in pharm_dicts_full])
+        for p in pharm_dicts_full:
+            p['dashboard']['payment_history'] = pay_map.get(p['inn']) or {}
         pharm_payload = pharm_dicts_full
 
     return web.json_response({
@@ -396,12 +401,16 @@ async def handle_pharmacy_full(request: web.Request):
             except json.JSONDecodeError: return {}
         return value
 
+    dashboard = _parse(row['dashboard_data'])
+    pay_map = await get_payment_history_map([inn])
+    dashboard['payment_history'] = pay_map.get(inn) or {}
+
     return web.json_response({
         'id': row['id'],
         'inn': row['inn'],
         'name': row['pharmacy_name'],
         'business': row['business_name'],
-        'dashboard': _parse(row['dashboard_data']),
+        'dashboard': dashboard,
     })
 
 

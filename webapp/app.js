@@ -185,6 +185,7 @@ const LANG = {
     incomeSub: 'Весь заработок с DATFO по периодам',
     incomeMonths: 'По месяцам',
     incomeProjects: 'По проектам',
+    incomePays: 'Платежи',
     incomeRowEarned: 'Начислено (сум)',
     incomeRowBonus: 'Из них бонус DATFO',
     incomeYearTotal: 'Заработано за {year}',
@@ -429,6 +430,7 @@ const LANG = {
     incomeSub: "DATFO bilan butun daromad — davrlar boʻyicha",
     incomeMonths: 'Oylar',
     incomeProjects: 'Loyihalar',
+    incomePays: "To'lovlar",
     incomeRowEarned: "Hisoblangan daromad (so'm)",
     incomeRowBonus: 'Shundan DATFO bonusi',
     incomeYearTotal: '{year}-yilda topdingiz',
@@ -843,11 +845,12 @@ function renderDashboard(pharm) {
 
   renderPharmacy(pharm, d);
 
-  // До подключения реальных транзакционных данных скрываем все блоки на синтетике/заглушках:
-  // история заработка (bizHero), «соседи», продающие советы/упущенная выгода, промо, пустые
-  // бонусы. Показываем только реальное: квартал, динамику, месяцы, проекты.
+  // Скрываем продающие триггеры и блоки-заглушки (советы, пустые бонусы). История
+  // дохода (bizHero) больше не синтетика: renderIncome покажет её, если по аптеке
+  // есть реальные выплаты (payment_history из карточки счёта 5110).
   hidePharmacyTriggers();
   hideFakeSections();
+  renderIncome(d);
 
   renderStats(d.stats);
   renderQuarter(d.totals);
@@ -1405,38 +1408,31 @@ function renderPharmacy(pharm, d) {
   }
 }
 
-function renderIncome(d) {
-  renderBizHero(d);
+// РЕАЛЬНАЯ история выплат (карточка счёта 5110) приходит с бэка в
+// d.payment_history: { "2025": { total, count, months[12], payments:[{d,a}] } }.
+// Блок показываем ТОЛЬКО если по аптеке есть выплаты — никаких фейков.
+function paymentYears(d) {
+  const ph = (d && d.payment_history) || {};
+  return Object.keys(ph)
+    .filter(y => ph[y] && Number(ph[y].total) > 0)
+    .sort();  // по возрастанию: последний = актуальный год
 }
 
-// История доходов за 8 месяцев — стабильный фейк по ИНН.
-// Когда придёт реальный лист "История бонусов" — заменим эту функцию на чтение.
-function generateEarningsHistory(inn, monthsCount) {
-  const months = monthsCount || 8;
-  const h = simpleHash((inn || 'demo') + ':earnings');
-  // База ~ 1.2M..3.2M в месяц (реалистично для аптеки)
-  const base = 1200000 + (h % 200) * 10000;
-  // Лёгкий устойчивый рост: +2.0%..+6.0% в месяц (история всегда позитивна)
-  const trend = 1.020 + ((h >> 6) % 40) / 1000;
-  const values = [];
-  let cur = base;
-  for (let i = 0; i < months; i++) {
-    // Узкий шум 0.96..1.04 — живая линия, но тренд всегда виден вверх
-    const noise = 0.96 + (simpleHash((inn || 'demo') + ':m' + i) % 9) / 100;
-    values.push(Math.round(cur * noise / 10000) * 10000);
-    cur *= trend;
-  }
-  const total = values.reduce((a, b) => a + b, 0);
-  const first = values[0];
-  const last = values[values.length - 1];
-  const growthPct = first > 0 ? Math.round((last - first) / first * 100) : 0;
+function renderIncome(d) {
+  const years = paymentYears(d);
+  const heroEl = document.getElementById('bizHero');
+  if (!years.length || !heroEl) return; // выплат нет — блок остаётся скрытым
+  heroEl.style.display = '';
+  // bizSecondary оставляем скрытым: карточка «уже заработали» берёт бонус квартала,
+  // которого в СВОД нет (0 сум) — рядом с реальной историей это выглядело бы ошибкой.
+  renderBizHero(d, years);
+}
 
-  // "А могли ещё больше" — стабильный упущенный потенциал, 30-54% от заработанного.
-  const h2 = simpleHash((inn || 'demo') + ':couldhave');
-  const lossFactor = 0.30 + (h2 % 25) / 100;
-  const couldHave = Math.round(total * lossFactor / 10000) * 10000;
-
-  return { values, total, months, growthPct, avg: Math.round(total / months), couldHave };
+// Короткие подписи месяцев календарного года (для баров истории выплат)
+function yearMonthLabelsShort() {
+  return currentLang === 'uz'
+    ? ['Yan','Fev','Mar','Apr','May','Iyn','Iyl','Avg','Sen','Okt','Noy','Dek']
+    : ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
 }
 
 function renderSparkline(values, opts) {
@@ -1470,38 +1466,6 @@ function renderSparkline(values, opts) {
   `;
 }
 
-// Бенчмарк для новой аптеки: средний годовой доход «других аптек».
-// Считаем от потенциального бонуса/плана квартала ×4 квартала; стабильный фолбэк по ИНН.
-function computePeerBenchmark(d, inn) {
-  const totals = d.totals || {};
-  const bonuses = d.bonuses || {};
-  const potential = parseMoney((bonuses.potential && bonuses.potential.amount) || '');
-  const plan = parseMoney(totals.quarter_plan || '');
-  let base = potential > 0 ? potential * 4
-           : plan > 0 ? Math.round(plan * 0.16 * 4)
-           : 0;
-  if (base <= 0) {
-    const h = simpleHash((inn || 'demo') + ':peer');
-    base = (18 + h % 17) * 1000000; // 18–34 млн/год
-  }
-  return Math.round(base / 100000) * 100000;
-}
-
-// Абстрактный растущий бар-силуэт «средний доход аптек» (data-viz, не картинка).
-function peerBarsSvg() {
-  const hs = [40, 54, 47, 66, 58, 80, 72, 96];
-  const bw = 22, gap = 11, h = 100;
-  const w = hs.length * (bw + gap) - gap;
-  const bars = hs.map((bh, i) => {
-    const x = i * (bw + gap), y = h - bh;
-    return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="6" fill="url(#peerGrad)" opacity="${(0.38 + i * 0.08).toFixed(2)}"/>`;
-  }).join('');
-  return `<svg class="peer-bars" viewBox="0 0 ${w} ${h}" width="100%" height="90" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
-    <defs><linearGradient id="peerGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#13B863"/><stop offset="1" stop-color="#0A8F49"/>
-    </linearGradient></defs>${bars}</svg>`;
-}
-
 // Тап по столбику года — показать сумму этого месяца (одна активная за раз)
 window.showEarnBarVal = function (el) {
   const wrap = el.closest('.earn-bars');
@@ -1518,11 +1482,9 @@ window.showEarnBarVal = function (el) {
   if (v) v.classList.remove('hide');
 };
 
-function renderBizHero(d) {
+function renderBizHero(d, years) {
   const bonuses = d.bonuses || {};
   const totals = d.totals || {};
-  const stats = d.stats || {};
-  const accrued = parseMoney((bonuses.accrued && bonuses.accrued.amount) || '');
   const moneyLabel = currentLang === 'uz' ? "so'm" : 'сум';
 
   // Сумма продаж квартала из фактов месяцев
@@ -1531,65 +1493,51 @@ function renderBizHero(d) {
   ['april', 'may', 'june'].forEach(m => {
     revenue += parseMoney((months[m] && months[m].fact) || '0');
   });
-
-  const innStr = currentPharmInn || (currentPharm && currentPharm.inn) || 'demo';
-  // Новая аптека — ещё не заработала с проектов DATFO
-  const isNew = accrued <= 0 && Number(stats.completed || 0) <= 0 && revenue <= 0;
+  const accrued = parseMoney((bonuses.accrued && bonuses.accrued.amount) || '');
 
   const heroEl = document.getElementById('bizHero');
   if (heroEl) {
     heroEl.className = 'biz-hero success';
 
-    if (isNew) {
-      // ===== НОВАЯ АПТЕКА — социальное доказательство (средний доход других) =====
-      const peerAvg = computePeerBenchmark(d, String(innStr));
-      heroEl.innerHTML = `
-        <div class="biz-hero-label new">${t('peerEyebrow')}</div>
-        <div class="peer-illus">${peerBarsSvg()}</div>
-        <div class="biz-hero-amount medium peer-amount">${formatMoney(peerAvg)} ${moneyLabel}</div>
-        <div class="biz-hero-sub peer-sub">${t('peerSub')}</div>
-        <div class="earn-hook"><span class="earn-hook-icon">🚀</span><span>${t('peerHook')}</span></div>
-        <button class="biz-hero-could" onclick="adviceCtaClick('start-earning', 'new')">
-          <span class="biz-hero-could-icon">💡</span>
-          <span class="biz-hero-could-text">${t('peerCta')} →</span>
-        </button>
-      `;
-    } else {
-      // ===== ЕСТЬ ИСТОРИЯ — годовой доход по месяцам (12 мес) =====
-      const earnings = generateEarningsHistory(String(innStr), 12);
-      const subKey = earnings.growthPct >= 5 ? 'bizHeroEarnedSubGrowth' : 'bizHeroEarnedSubFlat';
-      const amountClass = earnings.total >= 10000000 ? 'medium' : '';
-      const vals = earnings.values;
-      const maxV = Math.max(...vals, 1);
-      const peakIdx = vals.indexOf(Math.max(...vals));
-      const labels = lastMonthLabelsShort(vals.length);
-      const barsHtml = vals.map((v, i) => {
-        const hPct = Math.max(14, Math.round(v / maxV * 100));
-        // На годовом графике (12 столбиков) подписываем только лучший месяц — чище
-        const showVal = (i === peakIdx);
-        return `
-        <div class="earn-bar ${i === peakIdx ? 'peak' : ''}" onclick="showEarnBarVal(this)">
-          <div class="earn-bar-val${showVal ? '' : ' hide'}">${compactMoney(v)}</div>
-          <div class="earn-bar-track"><div class="earn-bar-fill" style="height: ${hPct}%;"></div></div>
-          <div class="earn-bar-month">${labels[i]}</div>
-        </div>`;
-      }).join('');
-      heroEl.innerHTML = `
-        <div class="biz-hero-label">${t('bizHeroEarnedYou')}</div>
-        <div class="biz-hero-amount ${amountClass}">${formatMoney(earnings.total)} ${moneyLabel}</div>
-        <div class="biz-hero-sub">${t(subKey, { n: earnings.months, pct: Math.abs(earnings.growthPct) })}</div>
-        <div class="earn-history">
-          <div class="earn-history-cap">${t('earnHistCapYear')}</div>
-          <div class="earn-bars year">${barsHtml}</div>
-        </div>
-        <button class="earn-history-btn" onclick="openEarningsHistory()">${t('incomeBtn')} →</button>
-        <div class="earn-hook"><span class="earn-hook-icon">📈</span><span>${t('earnHistHook')}</span></div>
-        <button class="biz-hero-could" onclick="adviceCtaClick('could-have-more', 'history')">
-          <span class="biz-hero-could-icon">💡</span>
-          <span class="biz-hero-could-text">${t('bizHeroCould', { amount: formatMoney(earnings.couldHave), money: moneyLabel })}</span>
-        </button>
-      `;
-    }
+    // ===== РЕАЛЬНЫЕ ВЫПЛАТЫ — последний год из payment_history =====
+    const ph = d.payment_history || {};
+    const yearKey = years[years.length - 1];
+    const yd = ph[yearKey] || {};
+    const vals = (yd.months || []).map(Number);
+    const total = Number(yd.total) || 0;
+
+    // Рост: последний месяц с выплатой против первого (в пределах года)
+    const nz = vals.map((v, i) => ({ v, i })).filter(x => x.v > 0);
+    const monthsWithPay = nz.length;
+    const growthPct = (nz.length >= 2 && nz[0].v > 0)
+      ? Math.round((nz[nz.length - 1].v - nz[0].v) / nz[0].v * 100) : 0;
+    const subKey = growthPct >= 5 ? 'bizHeroEarnedSubGrowth' : 'bizHeroEarnedSubFlat';
+    const amountClass = total >= 10000000 ? 'medium' : '';
+
+    const maxV = Math.max(...vals, 1);
+    const peakIdx = vals.indexOf(Math.max(...vals));
+    const labels = yearMonthLabelsShort();
+    const barsHtml = vals.map((v, i) => {
+      const hPct = v > 0 ? Math.max(14, Math.round(v / maxV * 100)) : 4;
+      // Подписываем только лучший месяц — чище; остальные по тапу
+      const showVal = (i === peakIdx && v > 0);
+      return `
+      <div class="earn-bar ${i === peakIdx && v > 0 ? 'peak' : ''}" onclick="showEarnBarVal(this)">
+        <div class="earn-bar-val${showVal ? '' : ' hide'}">${v > 0 ? compactMoney(v) : ''}</div>
+        <div class="earn-bar-track"><div class="earn-bar-fill" style="height: ${hPct}%;"></div></div>
+        <div class="earn-bar-month">${labels[i]}</div>
+      </div>`;
+    }).join('');
+    heroEl.innerHTML = `
+      <div class="biz-hero-label">${t('bizHeroEarnedYou')} · ${escapeHtml(String(yearKey))}</div>
+      <div class="biz-hero-amount ${amountClass}">${formatMoney(total)} ${moneyLabel}</div>
+      <div class="biz-hero-sub">${t(subKey, { n: monthsWithPay, pct: Math.abs(growthPct) })}</div>
+      <div class="earn-history">
+        <div class="earn-history-cap">${t('earnHistCapYear')}</div>
+        <div class="earn-bars year">${barsHtml}</div>
+      </div>
+      <button class="earn-history-btn" onclick="openEarningsHistory()">${t('incomeBtn')} →</button>
+    `;
   }
 
   // === SECONDARY === — 2 карточки: бонус за текущий квартал + продажи квартала
@@ -1620,44 +1568,19 @@ function _incomeMonthNames() {
     : ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 }
 
-// Доход = ТОЛЬКО бонус DATFO, и только с проектов, достигших 100%.
-// Пока проект < 100% — дохода нет; на 100% начисляется весь бонус проекта.
-// Текущий год — из реальных проектов; прошлые годы — стабильный плейсхолдер.
-function generateIncomeDetail(inn, projects) {
-  const now = new Date();
-  const curYear = now.getFullYear();
-  const curMonth = now.getMonth();
-  const real = projects || [];
-  const names = real.length ? real.map(p => p.name) : ['KRKA','KUSUM','NOBEL','EGIS','GEDEON'];
-  const years = [];
-  for (let y = 0; y < 3; y++) {
-    const year = curYear - y;
-    const lastMonth = (y === 0) ? curMonth : 11;
-    let projList;
-    if (y === 0 && real.length) {
-      // Реальные данные: доход только с проектов на 100%+ (весь бонус)
-      projList = real
-        .filter(p => Number(p.percent || 0) >= 100)
-        .map(p => ({ name: p.name, amount: parseMoney(p.bonus_amount || '0') }))
-        .filter(p => p.amount > 0);
-    } else {
-      // Прошлые годы — завершённые проекты (плейсхолдер по ИНН)
-      const h = simpleHash((inn || 'demo') + ':py' + year);
-      projList = names.slice(0, 3 + (h % 3)).map(n => ({
-        name: n,
-        amount: Math.round((800000 + (simpleHash((inn || 'demo') + ':pb' + year + n) % 2200) * 1000) / 10000) * 10000,
-      }));
-    }
-    const total = projList.reduce((a, b) => a + b.amount, 0);
-    // Каждый завершённый проект начисляется в свой месяц (детерминированно)
-    const months = Array.from({ length: 12 }, (_, m) => ({ m, amount: 0 }));
-    projList.forEach(p => {
-      const mo = simpleHash((inn || 'demo') + ':pm' + year + p.name) % (lastMonth + 1);
-      months[mo].amount += p.amount;
-    });
-    years.push({ year, total, months, projects: projList.slice().sort((a, b) => b.amount - a.amount) });
-  }
-  return years;
+// РЕАЛЬНАЯ детализация: собираем годы из d.payment_history (карточка счёта 5110).
+// Каждый год: total + месяцы (агрегаты) + список отдельных платежей (дата, сумма).
+function buildIncomeDetail(d) {
+  const ph = (d && d.payment_history) || {};
+  return Object.keys(ph)
+    .filter(y => ph[y] && Number(ph[y].total) > 0)
+    .map(y => ({
+      year: Number(y),
+      total: Number(ph[y].total) || 0,
+      months: (ph[y].months || []).map((a, m) => ({ m, amount: Number(a) || 0 })),
+      payments: (ph[y].payments || []).map(p => ({ d: p.d, a: Number(p.a) || 0 })),
+    }))
+    .sort((a, b) => b.year - a.year);
 }
 
 function _incMask(v) {
@@ -1669,8 +1592,8 @@ const _eyeOffSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" 
 window.openEarningsHistory = function () {
   trackEvent('income_open', {});
   const d = (currentPharm && currentPharm.dashboard) || {};
-  const inn = currentPharmInn || (currentPharm && currentPharm.inn) || 'demo';
-  incomeData = generateIncomeDetail(String(inn), d.projects || []);
+  incomeData = buildIncomeDetail(d);
+  if (!incomeData.length) return; // без реальных выплат шторку не открываем
   if (incomeYear == null || !incomeData.some(x => x.year === incomeYear)) incomeYear = incomeData[0].year;
   incomeMode = 'month'; incomeMasked = true;
   renderIncomeSheet();
@@ -1729,7 +1652,7 @@ function updateIncomeContent() {
   const modes = document.getElementById('incModes');
   if (modes) modes.innerHTML =
     `<button class="inc-mode ${incomeMode === 'month' ? 'active' : ''}" onclick="setIncomeMode('month')">${t('incomeMonths')}</button>` +
-    `<button class="inc-mode ${incomeMode === 'project' ? 'active' : ''}" onclick="setIncomeMode('project')">${t('incomeProjects')}</button>`;
+    `<button class="inc-mode ${incomeMode === 'pays' ? 'active' : ''}" onclick="setIncomeMode('pays')">${t('incomePays')}</button>`;
 
   const eye = document.getElementById('incEye');
   if (eye) { eye.className = 'inc-eye' + (incomeMasked ? '' : ' on'); eye.innerHTML = incomeMasked ? _eyeOffSvg : _eyeSvg; }
@@ -1748,11 +1671,12 @@ function updateIncomeContent() {
         <div class="inc-row"><span class="inc-label">${t('incomeRowEarned')}</span><span class="inc-amount earn">${_incMask(mo.amount)}</span></div>
       </div>`).join('') : `<div class="inc-empty">${t('incomeEmpty')}</div>`;
   } else {
-    const rows = yr.projects.filter(p => p.amount > 0);
+    // Список отдельных платежей за год (дата + сумма), новые сверху
+    const rows = (yr.payments || []).filter(p => p.a > 0);
     listHtml = rows.length ? rows.map(p => `
       <div class="inc-card">
-        <div class="inc-card-title">${escapeHtml(p.name)}</div>
-        <div class="inc-row"><span class="inc-label">${t('incomeRowEarned')}</span><span class="inc-amount earn">${_incMask(p.amount)}</span></div>
+        <div class="inc-card-title">${escapeHtml(p.d)}</div>
+        <div class="inc-row"><span class="inc-label">${t('incomeRowEarned')}</span><span class="inc-amount earn">${_incMask(p.a)}</span></div>
       </div>`).join('') : `<div class="inc-empty">${t('incomeEmpty')}</div>`;
   }
   const list = document.getElementById('incList');

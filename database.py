@@ -110,6 +110,22 @@ async def create_tables():
         ''')
         await conn.execute('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(app_user_id);')
 
+        # --- ВЫПЛАТЫ (карточка счёта 5110: оплата за услуги трейд-маркетинга) ---
+        # Отдельная таблица, а не dashboard_data: недельный импорт СВОД полностью
+        # перезаписывает dashboard_data и затёр бы историю. Источник — статичный xlsx,
+        # матчинг к аптеке по названию фирмы (см. payments_import.py).
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS payments (
+                id BIGSERIAL PRIMARY KEY,
+                inn VARCHAR(50) NOT NULL,
+                company TEXT,
+                pay_date DATE NOT NULL,
+                amount NUMERIC NOT NULL,
+                doc TEXT
+            );
+        ''')
+        await conn.execute('CREATE INDEX IF NOT EXISTS idx_payments_inn ON payments(inn);')
+
         print("✅ База данных готова (включая таблицы опросов, событий и авторизации).")
     finally:
         await conn.close()
@@ -298,6 +314,52 @@ async def patch_pharmacy_meta(inn, owner_tg_id, meta):
         ''', inn, owner_tg_id, json.dumps(meta or {}, ensure_ascii=False))
     finally:
         await conn.close()
+
+# --- ВЫПЛАТЫ (история оплат за трейд-маркетинг) ---
+
+async def replace_all_payments(rows):
+    """Полная перезагрузка истории выплат (источник — статичный xlsx за год).
+
+    rows: список кортежей (inn, company, pay_date: date, amount: float, doc).
+    """
+    conn = await get_connection()
+    try:
+        async with conn.transaction():
+            await conn.execute('TRUNCATE payments;')
+            await conn.copy_records_to_table(
+                'payments', records=rows,
+                columns=['inn', 'company', 'pay_date', 'amount', 'doc'])
+    finally:
+        await conn.close()
+
+
+async def get_payment_history_map(inns):
+    """История выплат для набора аптек: {inn: {year: {...}}}.
+
+    Формат года: {'total': float, 'count': int, 'months': [12 сумм],
+                  'payments': [{'d': 'DD.MM.YYYY', 'a': float}, ...] (по убыванию даты)}.
+    """
+    if not inns:
+        return {}
+    conn = await get_connection()
+    try:
+        rows = await conn.fetch(
+            'SELECT inn, pay_date, amount::float8 AS amount FROM payments '
+            'WHERE inn = ANY($1) ORDER BY pay_date DESC', list(inns))
+    finally:
+        await conn.close()
+
+    result = {}
+    for r in rows:
+        d = r['pay_date']
+        year = result.setdefault(r['inn'], {}).setdefault(str(d.year), {
+            'total': 0.0, 'count': 0, 'months': [0.0] * 12, 'payments': []})
+        year['total'] += r['amount']
+        year['count'] += 1
+        year['months'][d.month - 1] += r['amount']
+        year['payments'].append({'d': d.strftime('%d.%m.%Y'), 'a': r['amount']})
+    return result
+
 
 # --- ОПРОСЫ (НОВОЕ) ---
 
