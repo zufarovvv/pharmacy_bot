@@ -235,6 +235,17 @@ Mini App при следующем открытии видит свежие да
 - `pharmacies(id PK, inn UNIQUE, owner_tg_id, business_name, pharmacy_name, dashboard_data JSONB)`
 - `polls(id PK, title, created_at)` + `poll_answers(poll_id, user_id, answer, answered_at)`
 
+## Раздельный хостинг фронта и бека (опционально)
+
+По умолчанию — монолит: `api.py` раздаёт и API, и `webapp/`. Чтобы разнести:
+
+1. На беке в `.env`: `SERVE_WEBAPP=0` и `FRONTEND_ORIGINS=https://адрес-фронта` (через запятую, если несколько).
+2. Папку `webapp/` захостить где угодно (Cloudflare Pages / nginx / CDN) — сборка не нужна.
+3. В `webapp/config.js`: `window.DATFO_API_BASE = 'https://адрес-бека'`.
+4. В BotFather / `WEB_APP_URL` бот указывает на **фронт**.
+
+Авторизация передаётся заголовками (initData / Bearer), куки не используются — кросс-доменно работает как есть.
+
 ## Безопасность
 
 - `.env` и `creds.json` исключены через `.gitignore`. Никогда не коммить.

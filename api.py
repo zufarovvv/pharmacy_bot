@@ -40,6 +40,15 @@ ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 ANTHROPIC_MODEL = os.getenv('ANTHROPIC_MODEL', 'claude-haiku-4-5')
 WEBAPP_DIR = Path(__file__).parent / 'webapp'
 
+# --- Раздельный хостинг фронта и бека ---
+# SERVE_WEBAPP=1 (по умолчанию) — монолит: этот же сервер раздаёт webapp/.
+# SERVE_WEBAPP=0 — режим «только API»: фронт хостится отдельно (CDN/Pages/nginx),
+#   в webapp/config.js прописывается window.DATFO_API_BASE = адрес этого API.
+# FRONTEND_ORIGINS — с каких origin'ов фронта разрешён CORS, через запятую
+#   (например: https://app.datfo.uz,https://datfo.pages.dev). '*' = любой.
+SERVE_WEBAPP = os.getenv('SERVE_WEBAPP', '1') == '1'
+FRONTEND_ORIGINS = [o.strip() for o in os.getenv('FRONTEND_ORIGINS', '*').split(',') if o.strip()]
+
 
 def validate_init_data(init_data: str, bot_token: str):
     """Проверяет подпись Telegram WebApp initData через aiogram. Возвращает dict с user или None."""
@@ -665,19 +674,27 @@ def create_app() -> web.Application:
     app.router.add_post('/api/ai/ask', handle_ai_ask)
     app.router.add_get('/api/admin/stats', handle_admin_stats)
 
-    # Web App — раздаём всю папку webapp/ как статику; корень → index.html
-    app.router.add_get('/', handle_webapp_root)
-    if WEBAPP_DIR.exists():
-        app.router.add_static('/', WEBAPP_DIR, show_index=False, follow_symlinks=False)
+    # Web App — в монолите раздаём папку webapp/ как статику; корень → index.html.
+    # В режиме «только API» (SERVE_WEBAPP=0) фронт живёт отдельно, а корень отвечает
+    # JSON-визиткой — удобно для health-проверок и чтобы не путать с ошибкой.
+    if SERVE_WEBAPP:
+        app.router.add_get('/', handle_webapp_root)
+        if WEBAPP_DIR.exists():
+            app.router.add_static('/', WEBAPP_DIR, show_index=False, follow_symlinks=False)
+    else:
+        async def handle_api_root(request):
+            return web.json_response({'service': 'datfo-api', 'webapp': 'hosted separately'})
+        app.router.add_get('/', handle_api_root)
 
-    cors = aiohttp_cors.setup(app, defaults={
-        '*': aiohttp_cors.ResourceOptions(
-            allow_credentials=False,
-            expose_headers='*',
-            allow_headers='*',
-            allow_methods=['GET', 'POST', 'OPTIONS'],
-        )
-    })
+    # CORS: нужен, только когда фронт открыт с другого origin (раздельный хостинг).
+    # allow_credentials=False — авторизация у нас в заголовках, куки не используются.
+    cors_options = aiohttp_cors.ResourceOptions(
+        allow_credentials=False,
+        expose_headers='*',
+        allow_headers='*',
+        allow_methods=['GET', 'POST', 'OPTIONS'],
+    )
+    cors = aiohttp_cors.setup(app, defaults={origin: cors_options for origin in FRONTEND_ORIGINS})
     # CORS — только для API роутов (статике он не нужен и aiohttp_cors не умеет static)
     for route in list(app.router.routes()):
         try:
@@ -696,8 +713,9 @@ async def start_api(port: int = 8080, host: str = '0.0.0.0'):
     await runner.setup()
     site = web.TCPSite(runner, host, port)
     await site.start()
+    mode = 'монолит: API + webapp' if SERVE_WEBAPP else 'только API (фронт отдельно)'
     if ALLOW_QUERY_TG_ID:
-        print(f"🌐 API запущен на http://{host}:{port}")
+        print(f"🌐 API запущен на http://{host}:{port}  [{mode}]")
         print("⚠️  ALLOW_QUERY_TG_ID=1 — любой может читать /api/me?tg_id=<id>. Только для dev!")
     else:
-        print(f"🌐 API запущен на http://{host}:{port}  (auth: Telegram initData only)")
+        print(f"🌐 API запущен на http://{host}:{port}  [{mode}] (auth: Telegram initData only)")
