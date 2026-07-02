@@ -179,22 +179,25 @@ FRONTEND_ORIGINS=https://<проект>.pages.dev
 WEB_APP_URL=https://<проект>.pages.dev   # кнопки бота ведут на ФРОНТ
 ```
 
-**2. Фронт на Pages** (dash.cloudflare.com → Workers & Pages → Create → Pages →
-Connect to Git → выбрать репозиторий):
-- Build command: `printf "window.DATFO_API_BASE='%s';\n" "$DATFO_API_BASE" > webapp/config.js`
-- Build output directory: `webapp`
-- Environment variable: `DATFO_API_BASE` = публичный URL бека (туннель / api.<домен>)
+**2. Фронт на Pages — одной командой** (проект `datfo` → https://datfo.pages.dev):
+```bash
+./deploy_frontend.sh https://<публичный-адрес-бека>
+```
+Скрипт собирает бандл из `webapp/` + `_worker.js`-прокси: фронт ходит на СВОЙ домен
+(`datfo.pages.dev/api/*` — постоянный адрес), а воркер внутри Pages перебрасывает
+запросы на бек. CORS не нужен (same-origin), адрес бека нигде снаружи не светится.
+Требует авторизованный wrangler (`npx wrangler whoami`).
 
-Так адрес бека НЕ хардкодится в репо: меняется env-переменная в Pages → Retry deployment.
-Каждый `git push` в main автоматически передеплоивает фронт.
+**3. Проверка:**
+```bash
+curl https://datfo.pages.dev/api/health        # {"ok": true} — прокси работает
+```
+Открыть https://datfo.pages.dev в браузере → экран входа (это норма: нет Telegram
+initData); из Telegram через кнопку бота — полный дашборд.
 
-**3. Проверка:** открыть `https://<проект>.pages.dev` — грузится интерфейс; в DevTools →
-Network запросы `/api/me` идут на адрес бека и возвращают 401 (без Telegram это норма);
-из Telegram через кнопку — полный дашборд.
-
-**Смена URL бека** (quick-туннель перезапустился): поменять `DATFO_API_BASE` в Pages
-(Retry deployment) и `FRONTEND_ORIGINS` в `.env` на VPS (+ рестарт сервиса). С named
-tunnel на своём домене эта беготня исчезает.
+**Смена адреса бека** (туннель перезапустился / переехали на VPS): одна команда —
+`./deploy_frontend.sh <новый-адрес>`. Фронт, кнопки бота и Telegram не меняются
+вообще. С named tunnel на своём домене и эта команда станет ненужной.
 
 ## Если что-то не так
 - Бот не стартует → `journalctl -u datfo-bot -n 50`.
