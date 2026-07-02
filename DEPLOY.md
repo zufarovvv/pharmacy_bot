@@ -168,6 +168,34 @@ sudo apt -y install chromium-browser chromium-chromedriver
 ```
 Без них бот стартует и Mini App работает — падают только эти две кнопки.
 
+## Вариант Б: фронт на Cloudflare Pages, бек на VPS (раздельно)
+
+Целевая схема: Telegram открывает фронт на Pages; фронт ходит в API на VPS.
+
+**1. Бек на VPS** — как в основном гайде, но в `.env`:
+```
+SERVE_WEBAPP=0                      # бек не раздаёт webapp — только API
+FRONTEND_ORIGINS=https://<проект>.pages.dev
+WEB_APP_URL=https://<проект>.pages.dev   # кнопки бота ведут на ФРОНТ
+```
+
+**2. Фронт на Pages** (dash.cloudflare.com → Workers & Pages → Create → Pages →
+Connect to Git → выбрать репозиторий):
+- Build command: `printf "window.DATFO_API_BASE='%s';\n" "$DATFO_API_BASE" > webapp/config.js`
+- Build output directory: `webapp`
+- Environment variable: `DATFO_API_BASE` = публичный URL бека (туннель / api.<домен>)
+
+Так адрес бека НЕ хардкодится в репо: меняется env-переменная в Pages → Retry deployment.
+Каждый `git push` в main автоматически передеплоивает фронт.
+
+**3. Проверка:** открыть `https://<проект>.pages.dev` — грузится интерфейс; в DevTools →
+Network запросы `/api/me` идут на адрес бека и возвращают 401 (без Telegram это норма);
+из Telegram через кнопку — полный дашборд.
+
+**Смена URL бека** (quick-туннель перезапустился): поменять `DATFO_API_BASE` в Pages
+(Retry deployment) и `FRONTEND_ORIGINS` в `.env` на VPS (+ рестарт сервиса). С named
+tunnel на своём домене эта беготня исчезает.
+
 ## Если что-то не так
 - Бот не стартует → `journalctl -u datfo-bot -n 50`.
 - БД «password authentication failed» → проверьте `.env` и `pg_hba.conf` (для `127.0.0.1` должен быть `scram-sha-256`/`md5`).
