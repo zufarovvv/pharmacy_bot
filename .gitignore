@@ -43,6 +43,3 @@ Thumbs.db
 # Logs
 *.log
 logs/
-
-# Mobile: собранные APK в webapp (раздаются временно, не коммитим)
-webapp/*.apk

@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">DATFO</string>
-    <string name="title_activity_main">DATFO</string>
-    <string name="package_name">com.fom.datfo</string>
-    <string name="custom_url_scheme">com.fom.datfo</string>
-</resources>

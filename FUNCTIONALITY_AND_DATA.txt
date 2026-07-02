@@ -3,7 +3,7 @@ DATFO — ПОЛНЫЙ ФУНКЦИОНАЛ, ФАЙЛЫ И API
 (сценарий: в системе НЕТ данных — что нужно, чтобы всё заработало с нуля)
 ============================================================
 
-Один backend обслуживает И Telegram Mini App, И мобильное приложение (APK).
+Backend обслуживает Telegram Mini App (бот + веб-апп).
 Главный ключ связи всего — ИНН аптеки (inn).
 
 ЛЕГЕНДА:
@@ -21,9 +21,8 @@ DATFO — ПОЛНЫЙ ФУНКЦИОНАЛ, ФАЙЛЫ И API
 - seed_clients.py     Синк связки ИНН <-> telegram_id из мастер-листа.
 - create_app_user.py  Создание логин/пароль пользователей (вход вне Telegram).
 - webapp/             Фронтенд (index.html, app.js, config.js, assets/).
-- mobile/             Capacitor-проект (оборачивает webapp/ в Android APK).
 
-Поток: Excel/Sheets -> синк-скрипты -> PostgreSQL -> api.py -> webapp (Telegram/APK).
+Поток: Excel/Sheets -> синк-скрипты -> PostgreSQL -> api.py -> webapp (Telegram Mini App).
 
 
 ============================================================

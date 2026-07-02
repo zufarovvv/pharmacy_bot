@@ -2,7 +2,7 @@
 // DATFO Dashboard — клиентская логика. Bilingual (RU/UZ).
 // ============================================================
 
-// API_BASE: из config.js (для APK) либо текущий origin (Telegram / туннель / браузер).
+// API_BASE: из config.js (если фронт хостится отдельно) либо текущий origin (Telegram / туннель / браузер).
 const API_BASE = (window.DATFO_API_BASE && String(window.DATFO_API_BASE).trim()) || window.location.origin;
 let userData = null;
 let currentPharm = null;     // Полные данные аптеки, чей дашборд сейчас открыт
